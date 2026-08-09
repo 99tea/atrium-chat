@@ -1,0 +1,11 @@
+.env
+**/.env
+*.env
+cookies.txt
+**/cookies.txt
+evolution/webhook/data/
+**/data/*.json
+monitor/old/
+__pycache__/
+*.pyc
+.DS_Store

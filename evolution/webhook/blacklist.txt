@@ -1,0 +1,4 @@
+# Emails e domínios bloqueados — um por linha
+# Exemplos:
+# spam@example.com
+# @spammer.com.br

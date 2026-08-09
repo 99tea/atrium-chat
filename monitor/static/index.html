@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Australis Monitor</title>
+<link rel="icon" href="img/dark_logo.png">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <h1><img src="img/dark_logo.png" alt="" class="sidebar-logo"><span class="sidebar-title">Australis Monitor</span></h1>
+      <button id="sidebar-toggle" class="sidebar-toggle" data-tooltip="Expandir/Recolher"><i class="bi bi-list"></i></button>
+    </div>
+    <ul id="nav-list"></ul>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <i class="bi bi-person-circle"></i>
+        <span id="user-name"></span>
+      </div>
+      <button onclick="logout()" data-tooltip="Sair do sistema"><i class="bi bi-box-arrow-right"></i></button>
+    </div>
+  </nav>
+  <main id="content"></main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/me.js"></script>
+<script src="js/overview.js"></script>
+<script src="js/today.js"></script>
+<script src="js/agents.js"></script>
+<script src="js/conversations.js"></script>
+<script src="js/clients.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
