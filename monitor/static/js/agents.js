@@ -28,17 +28,17 @@ function availabilityBadge(status) {
 
 function slaListItem(r) {
   if (r.sla_percent === null) {
-    return `<div class="sla-list-item" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-              <span style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.assignee_name}</span>
+    return `<div class="sla-list-item" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span style="font-weight: 500; flex: 1; min-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.assignee_name}</span>
               <span class="badge badge-neutral" style="flex-shrink: 0;"><i class="bi bi-dash-circle"></i> Sem dados</span>
             </div>`;
   }
   
   const badgeClass = r.sla_percent >= 95 ? 'badge-green' : (r.sla_percent >= 80 ? 'badge-yellow' : 'badge-red');
   
-  return `<div class="sla-list-item" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-    <span style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${r.assignee_name}">${r.assignee_name}</span>
-    <div style="display: flex; gap: 6px; flex-shrink: 0; align-items: center;">
+  return `<div class="sla-list-item" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+    <span style="font-weight: 500; flex: 1; min-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${r.assignee_name}">${r.assignee_name}</span>
+    <div style="display: flex; gap: 6px; flex-shrink: 0; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
       <span class="badge badge-neutral" style="display:inline-flex; align-items:center; gap:4px;" title="Conversas Resolvidas">
         <i class="bi bi-check2-all"></i> ${r.total || 0}
       </span>

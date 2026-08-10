@@ -188,7 +188,7 @@ Screens.me = {
       </div>
     </div>
 
-    <div class="attention-assignees-row" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-bottom: 24px;">
+	<div class="grid-3-cols">
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Resolução por prioridade</h3>
         <div class="table-responsive" style="flex: 1; max-height: none; overflow-y: auto;">

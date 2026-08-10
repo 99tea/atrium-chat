@@ -392,3 +392,22 @@ button:active, .kpi-clickable:active, .sidebar li:active {
   border-radius: 50%;
   margin-right: 8px;
 }
+
+.grid-3-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1400px) {
+  .grid-3-cols { 
+    grid-template-columns: repeat(2, 1fr); 
+  }
+}
+
+@media (max-width: 1024px) {
+  .grid-3-cols { 
+    grid-template-columns: 1fr; 
+  }
+}

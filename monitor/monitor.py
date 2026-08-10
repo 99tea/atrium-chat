@@ -152,24 +152,24 @@ async def handle_conversation_event(data: dict, pool):
                     conversation_id, inbox_id, str(snap["team_id"]), str(team_id), occurred_at,
                 )
 
-            await conn.execute(
-                    """
-                    INSERT INTO monitor.conversation_snapshot
-                        (conversation_id, inbox_id, status, assignee_id, assignee_name, team_id,
-                         company_name, contact_id, contact_name, priority, subject, labels, updated_at,
-                         cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-                    ON CONFLICT (conversation_id) DO UPDATE SET
-                        inbox_id = $2, status = $3, assignee_id = $4, assignee_name = $5, team_id = $6,
-                        company_name = $7, contact_id = $8, contact_name = $9, priority = $10,
-                        subject = $11, labels = $12, updated_at = $13,
-                        cd_cliente = $14, razao_social = $15, regime_tributario = $16, status_contrato = $17,
-                        demanda_avulsa = $18
-                    """,
-                    conversation_id, inbox_id, status, assignee_id, assignee_name, team_id,
-                    company_name, contact_id, contact_name, priority, subject, labels, occurred_at,
-                    cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
-               )
+        await conn.execute(
+                """
+                INSERT INTO monitor.conversation_snapshot
+                    (conversation_id, inbox_id, status, assignee_id, assignee_name, team_id,
+                     company_name, contact_id, contact_name, priority, subject, labels, updated_at,
+                     cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+                ON CONFLICT (conversation_id) DO UPDATE SET
+                    inbox_id = $2, status = $3, assignee_id = $4, assignee_name = $5, team_id = $6,
+                    company_name = $7, contact_id = $8, contact_name = $9, priority = $10,
+                    subject = $11, labels = $12, updated_at = $13,
+                    cd_cliente = $14, razao_social = $15, regime_tributario = $16, status_contrato = $17,
+                    demanda_avulsa = $18
+                """,
+                conversation_id, inbox_id, status, assignee_id, assignee_name, team_id,
+                company_name, contact_id, contact_name, priority, subject, labels, occurred_at,
+                cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
+           )
 
 async def handle_message_event(data: dict, pool):
     conv = data.get("conversation") or {}
@@ -401,7 +401,7 @@ async def agents(request: Request, user=Depends(require_admin)):
     return {"resolved_last_30d": [dict(r) for r in resolved], "current_load": [dict(r) for r in current]}
 
 @router.get("/monitor/api/agents/status")
-async def agents_status(request: Request, user=Depends(require_admin)):
+async def agents_status(request: Request, user=Depends(get_current_user)):
     account_id = user["account_id"]
     async with httpx.AsyncClient() as client:
         r = await client.get(
@@ -656,9 +656,9 @@ async def agents_awaiting_count(request: Request, user=Depends(require_admin)):
     
 
 ALLOWED_SORT = {
-    "created_at": "l.created_at",
-    "updated_at": "cs.updated_at",
-    "priority": "cs.priority",
+    "created_at": "created_at",
+    "updated_at": "updated_at",
+    "priority": "priority",
     "sla_deadline": "sla_deadline",
 }
 
@@ -673,7 +673,7 @@ async def list_conversations(
     sort_dir: str = "asc",
     page: int = 1,
     page_size: int = 50,
-    user=Depends(require_admin),
+    user=Depends(get_current_user),
 ):
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
@@ -754,7 +754,7 @@ async def list_conversations(
 
 
 @router.get("/monitor/api/conversations/labels")
-async def conversations_labels(request: Request, user=Depends(require_admin)):
+async def conversations_labels(request: Request, user=Depends(get_current_user)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -1202,7 +1202,7 @@ async def me_reopened(request: Request, days: int = 30, user=Depends(get_current
 
 
 @router.get("/monitor/api/settings")
-async def get_settings(request: Request, user=Depends(require_admin)):
+async def get_settings(request: Request, user=Depends(get_current_user)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT key, value FROM monitor.settings")

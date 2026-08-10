@@ -10,50 +10,9 @@ function ageLabel(minutes) {
   return formatDuration(minutes);
 }
 
-async function openOverviewKpiModal(endpoint, title) {
-  const [rows, settings] = await Promise.all([
-    fetch(endpoint).then(r => r.json()),
-    fetch('/monitor/api/settings').then(r => r.json()),
-  ]);
-
-  const prioMap = { urgent: 'Urgente', high: 'Alta', medium: 'Média', low: 'Baixa', none: 'Nenhuma' };
-  const chatwootBase = settings.chatwoot_base_url || '';
-  const accountId = currentUser.account_id;
-
-  document.querySelector('#overview-kpi-modal-title').textContent = title;
-  document.querySelector('#overview-kpi-modal-table thead').innerHTML =
-    '<tr><th>ID</th><th>Cliente</th><th>Agente</th><th>Prioridade</th><th>Canal</th><th>Aberta há</th><th></th></tr>';
-
-  const chMap = { whatsapp: { label: 'WhatsApp', badge: 'badge-green' }, email: { label: 'E-mail', badge: 'badge-blue' }, other: { label: 'Outros', badge: 'badge-neutral' } };
-
-  document.querySelector('#overview-kpi-modal-table tbody').innerHTML = rows.map(r => {
-    const prio = String(r.priority || 'none').toLowerCase();
-    const prioLabel = prioMap[prio] || prio;
-    const prioBadge = prio === 'urgent' || prio === 'high' ? 'badge-red' : (prio === 'medium' ? 'badge-yellow' : 'badge-neutral');
-    const chInfo = chMap[r.channel] || chMap.other;
-    const url = `${chatwootBase}/app/accounts/${accountId}/search?q=${r.conversation_id}`;
-    return `
-      <tr>
-        <td>${r.conversation_id}</td>
-        <td>${r.contact_name || '-'}</td>
-        <td>${r.assignee_name || '-'}</td>
-        <td><span class="badge ${prioBadge}">${prioLabel}</span></td>
-        <td><span class="badge ${chInfo.badge}">${chInfo.label}</span></td>
-        <td>${ageLabel(r.age_minutes)}</td>
-        <td><i class="bi bi-box-arrow-up-right" style="cursor:pointer;color:var(--accent);" onclick="window.open('${url}', '_blank')"></i></td>
-      </tr>`;
-  }).join('');
-
-  document.getElementById('overview-kpi-modal').classList.remove('hidden');
-}
-
-function closeOverviewKpiModal() {
-  document.getElementById('overview-kpi-modal').classList.add('hidden');
-}
-
 Screens.overview = {
   template: `
-	<div class="filter-bar">
+    <div class="filter-bar">
       <button class="filter-btn" data-days="7">7D</button>
       <button class="filter-btn" data-days="14">14D</button>
       <button class="filter-btn active" data-days="30">30D</button>
@@ -75,9 +34,9 @@ Screens.overview = {
       <div class="card">
         <i class="bi bi-shield-check card-icon"></i>
         <span class="card-label">SLA Atingido</span>
-        <span class="card-value" id="ov-sla">-</span>
+        <span class="card-value" id="ov-sla" style="white-space: nowrap;">-</span>
       </div>
-	 <div class="card">
+      <div class="card">
         <i class="bi bi-envelope-open card-icon"></i>
         <span class="card-label">Total Criadas</span>
         <span class="card-value" id="ov-total-open">-</span>
@@ -124,20 +83,8 @@ Screens.overview = {
       <div class="chart-box"><canvas id="chart-ov-hourly"></canvas></div>
       <div class="chart-box"><canvas id="chart-ov-weekday"></canvas></div>
     </div>
-
-    <div id="overview-kpi-modal" class="modal hidden">
-      <div class="modal-content">
-        <button class="modal-close" onclick="closeOverviewKpiModal()">&times;</button>
-        <h3 id="overview-kpi-modal-title">Detalhes</h3>
-        <div class="table-responsive">
-          <table id="overview-kpi-modal-table"><thead></thead><tbody></tbody></table>
-        </div>
-      </div>
-    </div>
   `,
   load: async function () {
-    const oldModal = document.querySelector('body > #overview-kpi-modal');
-    if (oldModal) oldModal.remove();
     let selectedDays = 30;
 
     document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -148,14 +95,6 @@ Screens.overview = {
         fetchAndRender(selectedDays);
       });
     });
-    
-    const modalEl = document.getElementById('overview-kpi-modal');
-    if (modalEl) {
-      document.body.appendChild(modalEl);
-      modalEl.addEventListener('click', function (e) {
-        if (e.target === this) closeOverviewKpiModal();
-      });
-    }
 
     async function fetchAndRender(days) {
       const [kpis, daily, hourly, weekday, settings, resolutionByPriority, reopenRate, slaPriorityTargets] = await Promise.all([

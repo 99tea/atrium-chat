@@ -65,7 +65,11 @@ function showToast(message, type = 'success') {
 
 async function renderRoute() {
   let route = location.hash.replace('#', '') || (currentUser.role === 'administrator' ? 'today' : 'me');
-  if (route !== 'me' && currentUser.role !== 'administrator') route = 'me';
+  
+  const allowedForAgents = ['me', 'conversations'];
+  if (currentUser.role !== 'administrator' && !allowedForAgents.includes(route)) {
+    route = 'me';
+  }
 
   document.querySelectorAll('#nav-list li').forEach(li => li.classList.toggle('active', li.dataset.route === route));
   
@@ -81,7 +85,7 @@ async function renderRoute() {
   try {
     await Screens[route].load();
   } catch (error) {
-  	console.error(error);
+    console.error(error);
     showToast('Erro ao carregar dados da tela', 'error');
   } finally {
     loader.classList.add('hidden');
@@ -93,7 +97,7 @@ const NAV_CONFIG = [
   { route: 'today', label: 'Visão Hoje', icon: 'bi-graph-up', adminOnly: true },
   { route: 'overview', label: 'Visão Geral', icon: 'bi-speedometer2', adminOnly: true },
   { route: 'agents', label: 'Visão Agentes', icon: 'bi-people', adminOnly: true },
-  { route: 'conversations', label: 'Visão Conversas', icon: 'bi-chat-dots', adminOnly: true },
+  { route: 'conversations', label: 'Visão Conversas', icon: 'bi-chat-dots', adminOnly: false },
   { route: 'clients', label: 'Visão Clientes', icon: 'bi-building', adminOnly: true },
   { route: 'me', label: 'Meus Dados', icon: 'bi-person-circle', adminOnly: false },
   { route: 'settings', label: 'Configurações', icon: 'bi-gear', adminOnly: true },
