@@ -9,3 +9,9 @@ monitor/old/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Backup - credenciais e dados sensíveis
+backup/.env
+backup/local/
+backup/logs/
+backup/restore_test/
