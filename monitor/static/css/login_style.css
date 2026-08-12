@@ -1,14 +1,16 @@
 :root {
   --bg: #141517;
   --panel: #1c1d20;
-  --accent: #29a3ff;
-  --accent-hover: #1c8ce0;
+  --panel-light: #2b2c31;
+  --accent: #8f161b;
+  --accent-yellow: #ffc247;
+  --accent-green: #34d399;
+  --accent-red: #ff5c5c;
   --text: #eceefc;
   --muted: #9296b8;
   --border: #2b2c31;
-  --input-bg: #141517;
-  --error: #ff5c5c;
 }
+
 
 * { box-sizing: border-box; }
 body {

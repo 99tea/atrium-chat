@@ -15,13 +15,76 @@
       <img src="img/dark_logo.png" alt="" class="topbar-logo">
       <span class="topbar-title">Australis Monitor</span>
     </div>
-    <div class="topbar-right">
-      <div class="user-info">
-        <i class="bi bi-person-circle"></i>
-        <span id="user-name"></span>
-      </div>
-      <button class="logout-btn" onclick="logout()" data-tooltip="Sair do sistema"><i class="bi bi-box-arrow-right"></i></button>
-    </div>
+		<div class="topbar-right">
+			<div style="display: flex; align-items: center; gap: 12px; padding-right: 16px; border-right: 1px solid var(--border); margin-right: 16px;">
+			  <div class="auto-refresh-dropdown">
+			    <button id="auto-refresh-btn" class="topbar-btn" data-tooltip="Atualização Automática">
+			      <i class="bi bi-arrow-clockwise"></i> 
+			      <span id="refresh-indicator" style="font-size: 0.75rem; font-weight: bold; color: var(--accent-green); display: none;">ON</span>
+			    </button>
+			    <div class="dropdown-content" id="refresh-dropdown-content">
+			      <button onclick="setAutoRefresh(0)">Desativado</button>
+			      <button onclick="setAutoRefresh(60000)">1 minuto</button>
+			      <button onclick="setAutoRefresh(300000)">5 minutos</button>
+			      <button onclick="setAutoRefresh(900000)">15 minutos</button>
+			    </div>
+			  </div>
+			  <button onclick="toggleTheme()" class="topbar-btn" data-tooltip="Alternar Tema">
+			    <i class="bi bi-moon-stars" id="theme-icon"></i>
+			  </button>
+			  <button onclick="toggleFullScreen()" class="topbar-btn" data-tooltip="Modo TV (Tela Cheia)">
+			    <i class="bi bi-arrows-fullscreen"></i>
+			  </button>
+			</div>
+		  
+		  <div class="user-dropdown">
+		    <div class="user-info" id="user-menu-btn">
+		      <i class="bi bi-person-circle"></i>
+		      <span id="user-name"></span>
+		      <i class="bi bi-chevron-down" style="font-size: 0.8rem;"></i>
+		    </div>
+		    <div class="dropdown-content" id="user-dropdown-content">
+		      <button onclick="openProfileModal()"><i class="bi bi-person-badge"></i> Dados Pessoais</button>
+		      <button onclick="logout()" class="text-red"><i class="bi bi-box-arrow-right"></i> Sair do sistema</button>
+		    </div>
+		  </div>
+		</div>
+	  </header>
+	  
+	  <div class="main-container">
+	    <nav class="sidebar">
+	      <ul id="nav-list"></ul>
+	    </nav>
+	    <main id="content"></main>
+	  </div>
+	</div>
+
+	<div id="profile-modal" class="modal hidden">
+	  <div class="modal-content profile-modal-content" style="max-width: 400px; width: 100%;">
+	    <button class="modal-close" onclick="closeProfileModal()" style="z-index: 10; color: #fff;">&times;</button>
+	    <div class="profile-cover"></div>
+	    <div class="profile-avatar-wrapper">
+	      <i class="bi bi-person-circle"></i>
+	    </div>
+	    <div class="profile-info-section">
+	      <h3 id="profile-modal-name" class="profile-name"></h3>
+	      <span id="profile-modal-role" class="profile-role-badge"></span>
+	      
+	      <div class="profile-details-grid">
+	        <div class="profile-detail-item">
+	          <span class="profile-detail-label">ID da Conta</span>
+	          <span id="profile-modal-account" class="profile-detail-value"></span>
+	        </div>
+	        <div class="profile-detail-item">
+	          <span class="profile-detail-label">Status</span>
+	          <span class="profile-detail-value" style="color: var(--accent-green); display: flex; align-items: center; gap: 6px;">
+	            <i class="bi bi-circle-fill" style="font-size: 0.5rem;"></i> Ativo
+	          </span>
+	        </div>
+	      </div>
+	    </div>
+	  </div>
+	</div>
   </header>
   
   <div class="main-container">
@@ -34,6 +97,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="js/core.js"></script>
 <script src="js/me.js"></script>
+<script src="js/homepage.js"></script>
+<script src="js/sla.js"></script>
 <script src="js/overview.js"></script>
 <script src="js/today.js"></script>
 <script src="js/agents.js"></script>
