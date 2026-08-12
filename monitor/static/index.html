@@ -9,21 +9,27 @@
 </head>
 <body>
 <div class="app">
-  <nav class="sidebar">
-    <div class="sidebar-header">
-      <h1><img src="img/dark_logo.png" alt="" class="sidebar-logo"><span class="sidebar-title">Australis Monitor</span></h1>
+  <header class="topbar">
+    <div class="topbar-left">
       <button id="sidebar-toggle" class="sidebar-toggle" data-tooltip="Expandir/Recolher"><i class="bi bi-list"></i></button>
+      <img src="img/dark_logo.png" alt="" class="topbar-logo">
+      <span class="topbar-title">Australis Monitor</span>
     </div>
-    <ul id="nav-list"></ul>
-    <div class="sidebar-footer">
+    <div class="topbar-right">
       <div class="user-info">
         <i class="bi bi-person-circle"></i>
         <span id="user-name"></span>
       </div>
-      <button onclick="logout()" data-tooltip="Sair do sistema"><i class="bi bi-box-arrow-right"></i></button>
+      <button class="logout-btn" onclick="logout()" data-tooltip="Sair do sistema"><i class="bi bi-box-arrow-right"></i></button>
     </div>
-  </nav>
-  <main id="content"></main>
+  </header>
+  
+  <div class="main-container">
+    <nav class="sidebar">
+      <ul id="nav-list"></ul>
+    </nav>
+    <main id="content"></main>
+  </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="js/core.js"></script>

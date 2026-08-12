@@ -198,7 +198,7 @@ Screens.clients = {
       </div>
     </div>
 
-    <div class="attention-assignees-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin-bottom: 24px;">
+    <div class="grid-4-cols">
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Clientes mais recorrentes</h3>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
@@ -228,7 +228,7 @@ Screens.clients = {
       </div>
     </div>
 
-    <div class="attention-assignees-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 24px;">
+    <div class="grid-2-cols">
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Assuntos mais recorrentes</h3>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
@@ -244,7 +244,7 @@ Screens.clients = {
       </div>
     </div>
 
-    <div class="attention-assignees-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 24px;">
+    <div class="grid-2-cols">
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Tempo por departamento (todos os clientes)</h3>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
@@ -260,7 +260,7 @@ Screens.clients = {
       </div>
     </div>
 
-    <div class="attention-assignees-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 24px;">
+    <div class="grid-2-cols">
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Por regime tributário</h3>
         <div class="canvas-container" style="flex: 1; min-height: 220px; position: relative;">

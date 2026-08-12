@@ -188,7 +188,7 @@ Screens.me = {
       </div>
     </div>
 
-	<div class="grid-3-cols">
+    <div class="grid-3-cols">
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Resolução por prioridade</h3>
         <div class="table-responsive" style="flex: 1; max-height: none; overflow-y: auto;">

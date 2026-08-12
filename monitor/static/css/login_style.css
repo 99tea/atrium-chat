@@ -1,14 +1,15 @@
 :root {
-  --bg: #10112a;
-  --panel: #1a1c3d;
+  --bg: #141517;
+  --panel: #1c1d20;
   --accent: #29a3ff;
   --accent-hover: #1c8ce0;
   --text: #eceefc;
   --muted: #9296b8;
-  --border: #2c2e56;
-  --input-bg: #0d0e24;
+  --border: #2b2c31;
+  --input-bg: #141517;
   --error: #ff5c5c;
 }
+
 * { box-sizing: border-box; }
 body {
   background: var(--bg);

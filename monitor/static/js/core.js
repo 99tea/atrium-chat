@@ -71,7 +71,7 @@ async function renderRoute() {
     route = 'me';
   }
 
-  document.querySelectorAll('#nav-list li').forEach(li => li.classList.toggle('active', li.dataset.route === route));
+  document.querySelectorAll('#nav-list li[data-route]').forEach(li => li.classList.toggle('active', li.dataset.route === route));
   
   const content = document.getElementById('content');
   const loader = document.getElementById('global-loader');
@@ -94,42 +94,62 @@ async function renderRoute() {
 }
 
 const NAV_CONFIG = [
-  { route: 'today', label: 'Visão Hoje', icon: 'bi-graph-up', adminOnly: true },
-  { route: 'overview', label: 'Visão Geral', icon: 'bi-speedometer2', adminOnly: true },
-  { route: 'agents', label: 'Visão Agentes', icon: 'bi-people', adminOnly: true },
-  { route: 'conversations', label: 'Visão Conversas', icon: 'bi-chat-dots', adminOnly: false },
-  { route: 'clients', label: 'Visão Clientes', icon: 'bi-building', adminOnly: true },
-  { route: 'me', label: 'Meus Dados', icon: 'bi-person-circle', adminOnly: false },
-  { route: 'settings', label: 'Configurações', icon: 'bi-gear', adminOnly: true },
+  { section: 'Visão Geral', items: [
+    { route: 'today', label: 'Visão Hoje', icon: 'bi-graph-up', adminOnly: true },
+    { route: 'overview', label: 'Dashboard', icon: 'bi-speedometer2', adminOnly: true },
+  ]},
+  { section: 'Operacional', items: [
+    { route: 'agents', label: 'Agentes', icon: 'bi-people', adminOnly: true },
+    { route: 'conversations', label: 'Conversas', icon: 'bi-chat-dots', adminOnly: false },
+    { route: 'clients', label: 'Clientes', icon: 'bi-building', adminOnly: true },
+  ]},
+  { section: 'Administração', items: [
+    { route: 'me', label: 'Meus Dados', icon: 'bi-person-circle', adminOnly: false },
+    { route: 'settings', label: 'Configurações', icon: 'bi-gear', adminOnly: true },
+  ]}
 ];
 
 function renderNav() {
-  document.getElementById('nav-list').innerHTML = NAV_CONFIG.map(item => `
-    <li data-route="${item.route}" class="${item.adminOnly ? 'admin-only' : ''}">
-      <i class="bi ${item.icon}"></i>
-      <span class="nav-label">${item.label}</span>
-    </li>
-  `).join('');
+  let html = '';
+  NAV_CONFIG.forEach(group => {
+    const visibleItems = group.items.filter(item => currentUser.role === 'administrator' || !item.adminOnly);
+    if (visibleItems.length === 0) return;
+
+    html += `<li class="nav-section-title">${group.section}</li>`;
+    visibleItems.forEach(item => {
+      html += `
+        <li data-route="${item.route}" class="${item.adminOnly ? 'admin-only' : ''}" data-tooltip="${item.label}">
+          <i class="bi ${item.icon}"></i>
+          <span class="nav-label">${item.label}</span>
+        </li>
+      `;
+    });
+  });
+  document.getElementById('nav-list').innerHTML = html;
 }
 
 function setupSidebarToggle() {
   const toggle = document.getElementById('sidebar-toggle');
   const sidebar = document.querySelector('.sidebar');
-  const logoHeader = document.querySelector('.sidebar-header h1');
+  const topbarLogo = document.querySelector('.topbar-logo');
   
   const toggleSidebar = () => {
     sidebar.classList.toggle('collapsed');
     localStorage.setItem('sidebar-collapsed', sidebar.classList.contains('collapsed'));
+    
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 350);
   };
 
   if (localStorage.getItem('sidebar-collapsed') === 'true') sidebar.classList.add('collapsed');
   
-  toggle.addEventListener('click', toggleSidebar);
-  if (logoHeader) logoHeader.addEventListener('click', toggleSidebar);
+  if(toggle) toggle.addEventListener('click', toggleSidebar);
+  if(topbarLogo) topbarLogo.addEventListener('click', toggleSidebar);
 }
 
 function setupNav() {
-  document.querySelectorAll('#nav-list li').forEach(li => {
+  document.querySelectorAll('#nav-list li[data-route]').forEach(li => {
     li.addEventListener('click', () => { location.hash = li.dataset.route; });
   });
   window.addEventListener('hashchange', renderRoute);
