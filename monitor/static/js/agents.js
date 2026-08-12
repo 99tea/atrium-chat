@@ -26,30 +26,22 @@ function availabilityBadge(status) {
           </span>`;
 }
 
-function slaListItem(r) {
+function slaTableRow(r) {
   if (r.sla_percent === null) {
-    return `<div class="sla-list-item" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-              <span style="font-weight: 500; flex: 1; min-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.assignee_name}</span>
-              <span class="badge badge-neutral" style="flex-shrink: 0;"><i class="bi bi-dash-circle"></i> Sem dados</span>
-            </div>`;
+    return `<tr>
+              <td style="font-weight: 500; white-space: nowrap;">${r.assignee_name}</td>
+              <td colspan="3"><div class="empty-state" style="padding: 4px;"><span style="font-size: 0.8rem;">Sem dados</span></div></td>
+            </tr>`;
   }
   
-  const badgeClass = r.sla_percent >= 95 ? 'badge-green' : (r.sla_percent >= 80 ? 'badge-yellow' : 'badge-red');
+  const color = r.sla_percent >= 95 ? 'var(--accent-green)' : (r.sla_percent >= 80 ? 'var(--accent-yellow)' : 'var(--accent-red)');
   
-  return `<div class="sla-list-item" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-    <span style="font-weight: 500; flex: 1; min-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${r.assignee_name}">${r.assignee_name}</span>
-    <div style="display: flex; gap: 6px; flex-shrink: 0; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
-      <span class="badge badge-neutral" style="display:inline-flex; align-items:center; gap:4px;" title="Conversas Resolvidas">
-        <i class="bi bi-check2-all"></i> ${r.total || 0}
-      </span>
-      <span class="badge badge-neutral" style="display:inline-flex; align-items:center; gap:4px;" title="Tempo Médio da 1ª Resposta">
-        <i class="bi bi-stopwatch"></i> ${formatDuration(r.avg_first_response)}
-      </span>
-      <span class="badge ${badgeClass}" style="display:inline-flex; align-items:center; gap:4px; min-width: 65px; justify-content: center;" title="SLA Atingido">
-        <i class="bi bi-shield-check"></i> ${r.sla_percent}%
-      </span>
-    </div>
-  </div>`;
+  return `<tr>
+            <td style="font-weight: 500; white-space: nowrap;" title="${r.assignee_name}">${r.assignee_name}</td>
+            <td>${r.total || 0}</td>
+            <td style="white-space: nowrap;">${formatDuration(r.avg_first_response)}</td>
+            <td style="color: ${color}; font-weight: 700;">${r.sla_percent}%</td>
+          </tr>`;
 }
 
 function renderAgentsTable() {
@@ -72,7 +64,7 @@ function renderAgentsTable() {
       <td>${a.open_count}</td>
       <td>${a.awaiting_count}</td>
       <td>${a.reopened}</td>
-      <td><i class="bi bi-box-arrow-up-right" style="cursor:pointer;color:var(--accent); font-size: 1.1rem;" onclick="openAgentDetailModal(${a.agent_id}, '${(a.name || '').replace(/'/g, "\\'")}')"></i></td>
+      <td><i class="bi bi-box-arrow-up-right" style="cursor:pointer; font-size: 1.1rem;" onclick="openAgentDetailModal(${a.agent_id}, '${(a.name || '').replace(/'/g, "\\'")}')"></i></td>
     </tr>
   `).join('');
 
@@ -114,7 +106,7 @@ async function renderAgentDetail(agentId, days) {
     const current = ((1 - s.resolution_breach_rate) * 100).toFixed(0);
     slaEl.textContent = `${current}%`;
     const target = window.__monitorSettings?.sla_target_percent || 95;
-    slaEl.style.color = Number(current) >= Number(target) ? '#34d399' : '#f87171';
+    slaEl.style.color = Number(current) >= Number(target) ? 'var(--accent-green)' : 'var(--accent-red)';
   } else {
     slaEl.textContent = '-';
     slaEl.style.color = '';
@@ -181,7 +173,7 @@ Screens.agents = {
     <h2>Agentes</h2>
     <p class="muted-text" style="color: var(--muted); margin-top: -8px; margin-bottom: 16px;">Exibindo dados dos últimos 30 dias</p>
 
-    <div class="panel">
+    <div class="panel" style="margin-bottom: 24px;">
       <div class="table-responsive">
         <table id="agents-table">
           <thead>
@@ -201,38 +193,34 @@ Screens.agents = {
       </div>
     </div>
 
-    <div class="agents-grid-4" style="margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px;">
+    <div class="grid-3-cols">
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Criadas por time</h3>
-        <div class="canvas-container" style="height: 160px; position: relative;">
-          <canvas id="chart-team-open"></canvas>
-        </div>
-        <div class="table-responsive" style="flex: 1; max-height: none; overflow-y: auto;">
-          <div id="list-team-open" class="sla-list"></div>
+        <div class="table-responsive" style="flex: 1; max-height: 350px;">
+          <table id="table-team-open">
+            <thead><tr><th>Time</th><th>Total</th><th style="width: 100%;">Proporção</th><th>%</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
       
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Resolvidas por time</h3>
-        <div class="canvas-container" style="height: 160px; position: relative;">
-          <canvas id="chart-team-resolved"></canvas>
-        </div>
-        <div class="table-responsive" style="flex: 1; max-height: none; overflow-y: auto;">
-          <div id="list-team-resolved" class="sla-list"></div>
+        <div class="table-responsive" style="flex: 1; max-height: 350px;">
+          <table id="table-team-resolved">
+            <thead><tr><th>Time</th><th>Total</th><th style="width: 100%;">Proporção</th><th>%</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
       
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Ranking SLA</h3>
-        <div class="table-responsive" style="flex: 1; max-height: none; overflow-y: auto;">
-            <div id="list-top-sla" class="sla-list"></div>
-        </div>
-      </div>
-      
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Atenção (abaixo da meta)</h3>
-        <div class="table-responsive" style="flex: 1; max-height: none; overflow-y: auto;">
-            <div id="list-below-sla" class="sla-list"></div>
+        <div class="table-responsive" style="flex: 1; max-height: 350px;">
+          <table id="table-top-sla">
+            <thead><tr><th>Agente</th><th>Resolvidas</th><th style="white-space: nowrap;">1ª Resposta</th><th>SLA</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -352,38 +340,35 @@ Screens.agents = {
 
     renderAgentsTable();
 
-    const prioColorsTeam = ['#29a3ff', '#34d399', '#ffc247', '#ff5c5c', '#a679ff', '#9296b8', '#f97316', '#22d3ee'];
-
-    function renderTeamDist(chartId, listId, key) {
+    function renderTeamProgressTable(tableId, key) {
       const sorted = [...teamDist].sort((a, b) => b[key] - a[key]);
-      renderChart(chartId, {
-        type: 'doughnut',
-        data: {
-          labels: sorted.map(r => TEAM_NAMES[r.team_id] || `Time ${r.team_id}`),
-          datasets: [{ data: sorted.map(r => r[key]), backgroundColor: sorted.map((_, i) => prioColorsTeam[i % prioColorsTeam.length]) }],
-        },
-        options: {
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-        },
-      });
-
-      document.getElementById(listId).innerHTML = sorted.map((r, i) => `
-        <div class="sla-list-item">
-          <span style="display:flex; align-items:center; gap:8px;">
-            <span class="team-dist-dot" style="width:10px; height:10px; border-radius:50%; background:${prioColorsTeam[i % prioColorsTeam.length]}"></span>
-            ${TEAM_NAMES[r.team_id] || `Time ${r.team_id}`}
-          </span>
-          <span class="badge badge-neutral">${r[key]}</span>
-        </div>`).join('');
+      const total = sorted.reduce((sum, r) => sum + (r[key] || 0), 0);
+      
+      document.querySelector(`#${tableId} tbody`).innerHTML = sorted.length ? sorted.map(r => {
+        const val = r[key] || 0;
+        const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+        const name = TEAM_NAMES[r.team_id] || `Time ${r.team_id}`;
+        
+        return `
+          <tr>
+            <td style="white-space: nowrap; font-weight: 500;">${name}</td>
+            <td>${val}</td>
+            <td style="min-width: 100px; vertical-align: middle;">
+              <div style="width: 100%; background: var(--bg); border-radius: 4px; height: 8px; overflow: hidden; border: 1px solid var(--border);">
+                <div style="width: ${pct}%; background: var(--accent); height: 100%; border-radius: 4px; transition: width 1s ease-in-out;"></div>
+              </div>
+            </td>
+            <td style="text-align: right; font-weight: 600;">${pct}%</td>
+          </tr>
+        `;
+      }).join('') : '<tr><td colspan="4"><div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div></td></tr>';
     }
 
-    renderTeamDist('chart-team-open', 'list-team-open', 'created_count');
-    renderTeamDist('chart-team-resolved', 'list-team-resolved', 'resolved_count');
+    renderTeamProgressTable('table-team-open', 'created_count');
+    renderTeamProgressTable('table-team-resolved', 'resolved_count');
 
     const slaMap = {};
     slaRanking.forEach(r => { slaMap[r.assignee_id] = r; });
-    const target = settings.sla_target_percent || 95;
 
     const allAgentsSla = status.map(a => {
       const sla = slaMap[a.agent_id];
@@ -401,13 +386,8 @@ Screens.agents = {
       return b.sla_percent - a.sla_percent;
     });
 
-    document.getElementById('list-top-sla').innerHTML = allAgentsSla.length
-      ? allAgentsSla.map(slaListItem).join('')
-      : '<div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados suficientes</span></div>';
-
-    const belowSla = allAgentsSla.filter(r => r.sla_percent !== null && r.sla_percent < target);
-    document.getElementById('list-below-sla').innerHTML = belowSla.length
-      ? belowSla.map(slaListItem).join('')
-      : '<div class="empty-state"><i class="bi bi-emoji-smile" style="color: var(--accent-green); font-size: 1.5rem;"></i><span style="margin-top: 4px;">Tudo no prazo! Nenhum agente abaixo da meta.</span></div>';
+    document.querySelector('#table-top-sla tbody').innerHTML = allAgentsSla.length
+      ? allAgentsSla.map(slaTableRow).join('')
+      : '<tr><td colspan="4"><div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div></td></tr>';
   },
 };

@@ -252,18 +252,30 @@ Screens.me = {
       </div>
     </div>
   `,
-  load: async function () {
-    let selectedDays = 30;
+	load: async function () {
+	    let selectedDays = Number(localStorage.getItem('monitor-filter-days')) || 30;
 
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        selectedDays = Number(btn.dataset.days);
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        renderMeData(selectedDays);
-      });
-    });
+	    document.querySelectorAll('.filter-btn').forEach(b => {
+	      b.classList.toggle('active', Number(b.dataset.days) === selectedDays);
+	    });
 
-    await renderMeData(selectedDays);
-  },
+	    document.querySelectorAll('.filter-btn').forEach(btn => {
+	      btn.addEventListener('click', async () => {
+	        selectedDays = Number(btn.dataset.days);
+	        localStorage.setItem('monitor-filter-days', selectedDays);
+	        
+	        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+	        btn.classList.add('active');
+	        
+	        const content = document.getElementById('content');
+	        content.classList.add('loading');
+	        
+	        await renderMeData(selectedDays); 
+	        
+	        content.classList.remove('loading');
+	      });
+	    });
+
+	    await renderMeData(selectedDays); 
+	  },
 };

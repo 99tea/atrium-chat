@@ -5,13 +5,34 @@ const CLIENT_CHANNEL_MAP = {
   other: { label: 'Outros', badge: 'badge-neutral', icon: 'bi-chat-dots' } 
 };
 
-function clientRankItem(label, value, suffix = '') {
-  return `<div class="sla-list-item"><span>${label}</span><span class="badge badge-neutral">${value}${suffix}</span></div>`;
-}
-
 function clientChannelBadge(val) {
   const info = CLIENT_CHANNEL_MAP[val] || CLIENT_CHANNEL_MAP.other;
   return `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 8px;"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
+}
+
+function buildProgressTableHTML(data, labelFn, valFn, formatFn = null) {
+  const sorted = [...data].sort((a, b) => valFn(b) - valFn(a));
+  const total = sorted.reduce((sum, r) => sum + valFn(r), 0);
+  if (sorted.length === 0) return '<tr><td colspan="4"><div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div></td></tr>';
+  
+  return sorted.map(r => {
+    const val = valFn(r);
+    const displayVal = formatFn ? formatFn(val) : val;
+    const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+    const label = labelFn(r);
+    return `
+      <tr>
+        <td style="white-space: nowrap; font-weight: 500;">${label}</td>
+        <td>${displayVal}</td>
+        <td style="min-width: 100px; vertical-align: middle;">
+          <div style="width: 100%; background: var(--bg); border-radius: 4px; height: 8px; overflow: hidden; border: 1px solid var(--border);">
+            <div style="width: ${pct}%; background: var(--accent); height: 100%; border-radius: 4px; transition: width 1s ease-in-out;"></div>
+          </div>
+        </td>
+        <td style="text-align: right; font-weight: 600;">${pct}%</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 async function openClientDetailModal(clientKey, days) {
@@ -64,7 +85,7 @@ async function openClientDetailModal(clientKey, days) {
             <td>${r.subject || 'Não categorizado'}</td>
             <td>${new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
             <td>${slaTag}</td>
-            <td><i class="bi bi-box-arrow-up-right" style="cursor:pointer;color:var(--accent); font-size: 1.1rem;" onclick="window.open('${url}', '_blank')"></i></td>
+            <td style="text-align: right;"><i class="bi bi-box-arrow-up-right" style="cursor:pointer; font-size: 1.1rem;" onclick="window.open('${url}', '_blank')"></i></td>
           </tr>`;
       }).join('')
     : '<tr><td colspan="5"><div class="empty-state" style="padding: 15px;"><i class="bi bi-inbox"></i><span>Nenhuma conversa no período</span></div></td></tr>';
@@ -97,6 +118,7 @@ async function renderClientsData(days) {
   const totalConvs = clients.reduce((sum, c) => sum + (c.total || 0), 0);
   document.getElementById('clients-total-convs').textContent = totalConvs;
 
+  // Canais
   const totalChannels = { whatsapp: 0, email: 0, other: 0 };
   clients.forEach(c => {
     if(c.channels) {
@@ -105,66 +127,68 @@ async function renderClientsData(days) {
       totalChannels.other += (c.channels.other || 0);
     }
   });
+  const channelsData = [
+    { label: 'WhatsApp', value: totalChannels.whatsapp },
+    { label: 'E-mail', value: totalChannels.email },
+    { label: 'Outros', value: totalChannels.other }
+  ].filter(c => c.value > 0);
+  document.querySelector('#table-client-channels tbody').innerHTML = buildProgressTableHTML(channelsData, d => d.label, d => d.value);
 
-  renderChart('chart-client-channels', {
-    type: 'doughnut',
-    data: {
-      labels: ['WhatsApp', 'E-mail', 'Outros'],
-      datasets: [{ data: [totalChannels.whatsapp, totalChannels.email, totalChannels.other], backgroundColor: ['#34d399', '#29a3ff', '#9296b8'] }],
-    },
-    options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e8e8ea', boxWidth: 12 } } } },
-  });
-
+  // Clientes - Volume
   const topVolume = [...clients].sort((a, b) => b.total - a.total).slice(0, 10);
-  document.getElementById('list-clients-volume').innerHTML = topVolume.length
-    ? topVolume.map(c => `<div class="sla-list-item" style="cursor:pointer;" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})"><span>${c.client_name} <i class="bi bi-box-arrow-up-right" style="font-size:0.8em;color:var(--accent);"></i></span><span class="badge badge-neutral">${c.total}</span></div>`).join('')
-    : '<div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div>';
+  document.querySelector('#table-clients-volume tbody').innerHTML = topVolume.length
+    ? topVolume.map(c => `
+      <tr>
+        <td style="font-weight: 500; white-space: nowrap; cursor: pointer;" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})">${c.client_name}</td>
+        <td>${c.total}</td>
+        <td style="text-align: right;"><i class="bi bi-box-arrow-up-right" style="cursor:pointer; font-size: 1.1rem;" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})"></i></td>
+      </tr>`).join('')
+    : '<tr><td colspan="3"><div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div></td></tr>';
 
+  // Clientes - Tempo
   const topTime = [...clients].filter(c => c.avg_resolution !== null).sort((a, b) => b.avg_resolution - a.avg_resolution).slice(0, 10);
-  document.getElementById('list-clients-time').innerHTML = topTime.length
-    ? topTime.map(c => `<div class="sla-list-item" style="cursor:pointer;" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})"><span>${c.client_name} <i class="bi bi-box-arrow-up-right" style="font-size:0.8em;color:var(--accent);"></i></span><span class="badge badge-neutral">${formatDuration(c.avg_resolution)}</span></div>`).join('')
-    : '<div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div>';
+  document.querySelector('#table-clients-time tbody').innerHTML = topTime.length
+    ? topTime.map(c => `
+      <tr>
+        <td style="font-weight: 500; white-space: nowrap; cursor: pointer;" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})">${c.client_name}</td>
+        <td>${formatDuration(c.avg_resolution)}</td>
+        <td style="text-align: right;"><i class="bi bi-box-arrow-up-right" style="cursor:pointer; font-size: 1.1rem;" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})"></i></td>
+      </tr>`).join('')
+    : '<tr><td colspan="3"><div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div></td></tr>';
 
+  // Clientes - SLA
   const topBreach = [...clients].filter(c => c.breach_count > 0).sort((a, b) => b.breach_count - a.breach_count).slice(0, 10);
-  document.getElementById('list-clients-breach').innerHTML = topBreach.length
-    ? topBreach.map(c => `<div class="sla-list-item" style="cursor:pointer;" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})"><span>${c.client_name} <i class="bi bi-box-arrow-up-right" style="font-size:0.8em;color:var(--accent);"></i></span><span class="badge badge-red">${c.breach_count}x</span></div>`).join('')
-    : '<div class="empty-state"><i class="bi bi-emoji-smile" style="color: var(--accent-green);"></i><span>Nenhum SLA perdido</span></div>';
+  document.querySelector('#table-clients-breach tbody').innerHTML = topBreach.length
+    ? topBreach.map(c => `
+      <tr>
+        <td style="font-weight: 500; white-space: nowrap; cursor: pointer;" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})">${c.client_name}</td>
+        <td style="color: var(--accent-red); font-weight: 700;">${c.breach_count}x</td>
+        <td style="text-align: right;"><i class="bi bi-box-arrow-up-right" style="cursor:pointer; font-size: 1.1rem;" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})"></i></td>
+      </tr>`).join('')
+    : '<tr><td colspan="3"><div class="empty-state"><i class="bi bi-emoji-smile" style="color: var(--accent-green);"></i><span>Nenhum SLA perdido</span></div></td></tr>';
+
+  // Assuntos - Volume (Progress Bar)
   const topSubjectVolume = [...subjects].sort((a, b) => b.total - a.total).slice(0, 10);
-  document.getElementById('list-subjects-volume').innerHTML = topSubjectVolume.length
-    ? topSubjectVolume.map(s => clientRankItem(s.subject, s.total)).join('')
-    : '<div class="empty-state" style="padding: 10px;"><i class="bi bi-inbox"></i><span>Sem dados</span></div>';
+  document.querySelector('#table-subjects-volume tbody').innerHTML = buildProgressTableHTML(topSubjectVolume, d => d.subject, d => d.total);
 
+  // Assuntos - Tempo
   const topSubjectTime = [...subjects].filter(s => s.avg_resolution !== null).sort((a, b) => b.avg_resolution - a.avg_resolution).slice(0, 10);
-  document.getElementById('list-subjects-time').innerHTML = topSubjectTime.length
-    ? topSubjectTime.map(s => `<div class="sla-list-item"><span>${s.subject}</span><span class="badge badge-neutral">${formatDuration(s.avg_resolution)}</span></div>`).join('')
-    : '<div class="empty-state" style="padding: 10px;"><i class="bi bi-inbox"></i><span>Sem dados</span></div>';
+  document.querySelector('#table-subjects-time tbody').innerHTML = topSubjectTime.length
+    ? topSubjectTime.map(s => `<tr><td style="font-weight: 500;">${s.subject}</td><td style="text-align: right;">${formatDuration(s.avg_resolution)}</td></tr>`).join('')
+    : '<tr><td colspan="2"><div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div></td></tr>';
 
-  document.getElementById('list-dept-time').innerHTML = deptTime.length
-    ? deptTime.map(d => clientRankItem(d.team_name, formatDuration(d.total_minutes), ` · ${d.clients} clientes`)).join('')
-    : '<div class="empty-state" style="padding: 10px;"><i class="bi bi-inbox"></i><span>Sem dados</span></div>';
+  // Depto - Tempo (Progress Bar)
+  document.querySelector('#table-dept-time tbody').innerHTML = buildProgressTableHTML(deptTime, d => d.team_name, d => Math.round(d.total_minutes), val => formatDuration(val));
 
-  document.getElementById('list-demanda-avulsa').innerHTML = demandaAvulsa.length
-    ? demandaAvulsa.slice(0, 10).map(c => clientRankItem(c.client_name, c.total, 'x')).join('')
-    : '<div class="empty-state" style="padding: 10px;"><i class="bi bi-emoji-smile" style="color: var(--accent-green);"></i><span>Nenhuma demanda avulsa</span></div>';
+  // Demanda Avulsa (Progress Bar)
+  const demandaAvulsaTop = demandaAvulsa.slice(0, 10);
+  document.querySelector('#table-demanda-avulsa tbody').innerHTML = buildProgressTableHTML(demandaAvulsaTop, d => d.client_name, d => d.total);
 
-  const regimeColors = ['#29a3ff', '#34d399', '#ffc247', '#ff5c5c', '#a679ff', '#9296b8'];
-  renderChart('chart-regime', {
-    type: 'doughnut',
-    data: {
-      labels: byRegime.map(r => r.regime),
-      datasets: [{ data: byRegime.map(r => r.total), backgroundColor: byRegime.map((_, i) => regimeColors[i % regimeColors.length]) }],
-    },
-    options: { maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#e8e8ea', boxWidth: 12 } } } },
-  });
+  // Regime Tributário (Progress Bar)
+  document.querySelector('#table-regime tbody').innerHTML = buildProgressTableHTML(byRegime, d => d.regime, d => d.total);
 
-  renderChart('chart-status-contrato', {
-    type: 'doughnut',
-    data: {
-      labels: byStatusContrato.map(r => r.status_contrato),
-      datasets: [{ data: byStatusContrato.map(r => r.total), backgroundColor: byStatusContrato.map((_, i) => regimeColors[i % regimeColors.length]) }],
-    },
-    options: { maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#e8e8ea', boxWidth: 12 } } } },
-  });
+  // Status Contrato (Progress Bar)
+  document.querySelector('#table-status-contrato tbody').innerHTML = buildProgressTableHTML(byStatusContrato, d => d.status_contrato, d => d.total);
 }
 
 Screens.clients = {
@@ -198,80 +222,110 @@ Screens.clients = {
       </div>
     </div>
 
-    <div class="grid-4-cols">
+    <div class="grid-3-cols">
       <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Clientes mais recorrentes</h3>
+        <h3>Mais recorrentes</h3>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
-          <div id="list-clients-volume" class="sla-list"></div>
+          <table id="table-clients-volume">
+            <thead><tr><th>Cliente</th><th>Total</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
       
       <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Demanda mais tempo</h3>
+        <h3>Demandam mais tempo</h3>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
-          <div id="list-clients-time" class="sla-list"></div>
+          <table id="table-clients-time">
+            <thead><tr><th>Cliente</th><th>Tempo Médio</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
       
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>SLA Perdido</h3>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
-          <div id="list-clients-breach" class="sla-list"></div>
-        </div>
-      </div>
-      
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Canais Usados</h3>
-        <div class="canvas-container" style="flex: 1; min-height: 200px; position: relative;">
-          <canvas id="chart-client-channels"></canvas>
+          <table id="table-clients-breach">
+            <thead><tr><th>Cliente</th><th>Atrasos</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
     </div>
 
-    <div class="grid-2-cols">
+    <div class="grid-3-cols">
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Assuntos mais recorrentes</h3>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
-          <div id="list-subjects-volume" class="sla-list"></div>
+          <table id="table-subjects-volume">
+            <thead><tr><th>Assunto</th><th>Total</th><th style="width: 100%;">Proporção</th><th>%</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
       
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Assuntos que demandam mais tempo</h3>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
-          <div id="list-subjects-time" class="sla-list"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid-2-cols">
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Tempo por departamento (todos os clientes)</h3>
-        <div class="table-responsive" style="flex: 1; max-height: 250px;">
-          <div id="list-dept-time" class="sla-list"></div>
+          <table id="table-subjects-time">
+            <thead><tr><th>Assunto</th><th style="text-align: right;">Tempo Médio</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
       
       <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Demanda avulsa / cobrança extra</h3>
+        <h3>Tempo por departamento</h3>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
-          <div id="list-demanda-avulsa" class="sla-list"></div>
+          <table id="table-dept-time">
+            <thead><tr><th>Depto</th><th>Tempo</th><th style="width: 100%;">Proporção</th><th>%</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
     </div>
 
-    <div class="grid-2-cols">
+    <div class="grid-3-cols">
+      <div class="panel" style="display: flex; flex-direction: column;">
+        <h3>Canais Usados</h3>
+        <div class="table-responsive" style="flex: 1; max-height: 250px;">
+          <table id="table-client-channels">
+            <thead><tr><th>Canal</th><th>Total</th><th style="width: 100%;">Proporção</th><th>%</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Por regime tributário</h3>
-        <div class="canvas-container" style="flex: 1; min-height: 220px; position: relative;">
-          <canvas id="chart-regime"></canvas>
+        <div class="table-responsive" style="flex: 1; max-height: 250px;">
+          <table id="table-regime">
+            <thead><tr><th>Regime</th><th>Total</th><th style="width: 100%;">Proporção</th><th>%</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
       
       <div class="panel" style="display: flex; flex-direction: column;">
         <h3>Por status do contrato</h3>
-        <div class="canvas-container" style="flex: 1; min-height: 220px; position: relative;">
-          <canvas id="chart-status-contrato"></canvas>
+        <div class="table-responsive" style="flex: 1; max-height: 250px;">
+          <table id="table-status-contrato">
+            <thead><tr><th>Status</th><th>Total</th><th style="width: 100%;">Proporção</th><th>%</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <div class="grid-3-cols">
+      <div class="panel" style="display: flex; flex-direction: column;">
+        <h3>Demanda avulsa / cobrança extra</h3>
+        <div class="table-responsive" style="flex: 1; max-height: 250px;">
+          <table id="table-demanda-avulsa">
+            <thead><tr><th>Cliente</th><th>Total</th><th style="width: 100%;">Proporção</th><th>%</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -340,17 +394,29 @@ Screens.clients = {
       });
     }
 
-    let selectedDays = 30;
+    let selectedDays = Number(localStorage.getItem('monitor-filter-days')) || 30;
+
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.days) === selectedDays);
+    });
 
     document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         selectedDays = Number(btn.dataset.days);
+        localStorage.setItem('monitor-filter-days', selectedDays);
+        
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        renderClientsData(selectedDays);
+        
+        const content = document.getElementById('content');
+        content.classList.add('loading');
+        
+        await renderClientsData(selectedDays); 
+        
+        content.classList.remove('loading');
       });
     });
 
-    await renderClientsData(selectedDays);
-  },
+    await renderClientsData(selectedDays); 
+  }
 };

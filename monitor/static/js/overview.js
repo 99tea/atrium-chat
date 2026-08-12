@@ -10,6 +10,120 @@ function ageLabel(minutes) {
   return formatDuration(minutes);
 }
 
+async function renderOverviewData(days) {
+  const [kpis, daily, hourly, weekday, settings, resolutionByPriority, reopenRate, slaPriorityTargets] = await Promise.all([
+    fetch(`/monitor/api/overview?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/overview/daily?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/overview/hourly?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/overview/weekday?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch('/monitor/api/settings').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/overview/resolution-by-priority?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/overview/reopen-rate?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch('/monitor/api/sla-priority-targets').then(r => r.ok ? r.json() : []).catch(() => []),
+  ]);
+
+  document.getElementById('ov-frt').textContent = formatDuration(kpis.avg_first_response);
+  document.getElementById('ov-res').textContent = formatDuration(kpis.avg_resolution);
+  document.getElementById('ov-total-resolved').textContent = kpis.total ?? 0;
+  document.getElementById('ov-total-open').textContent = kpis.total_open ?? 0;
+
+  const slaEl = document.getElementById('ov-sla');
+  if (kpis.total) {
+    const current = ((1 - kpis.resolution_breach_rate) * 100).toFixed(0);
+    const target = settings.sla_target_percent || 95;
+    slaEl.textContent = `${current}% / ${target}%`;
+    slaEl.style.color = Number(current) >= Number(target) ? '#34d399' : '#f87171';
+  } else {
+    slaEl.textContent = '-';
+    slaEl.style.color = '';
+  }
+
+  const reopenPct = (kpis.total && reopenRate.reopened) ? ((reopenRate.reopened / kpis.total) * 100).toFixed(1) : '0.0';
+  document.getElementById('ov-reopen-rate').textContent = `${reopenPct}%`;
+
+  const maxDaily = Math.max(
+    ...daily.map(r => (r.created_whatsapp || 0) + (r.created_email || 0) + (r.created_other || 0)),
+    ...daily.map(r => r.resolved || 0), 0
+  );
+  
+  renderChart('chart-ov-daily', {
+    type: 'line',
+    data: {
+      labels: daily.map(r => new Date(r.day).toLocaleDateString('pt-BR')),
+      datasets: [
+        { label: 'Criadas WhatsApp', data: daily.map(r => r.created_whatsapp), borderColor: '#34d399', backgroundColor: '#34d399', tension: 0.3, fill: false },
+        { label: 'Criadas E-mail', data: daily.map(r => r.created_email), borderColor: '#29a3ff', backgroundColor: '#29a3ff', tension: 0.3, fill: false },
+        { label: 'Outros', data: daily.map(r => r.created_other), borderColor: '#9296b8', backgroundColor: '#9296b8', tension: 0.3, fill: false },
+        { label: 'Resolvidas', data: daily.map(r => r.resolved), borderColor: '#ffc247', backgroundColor: '#ffc247', tension: 0.3, fill: false },
+      ],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#e8e8ea' } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#9599a6', maxTicksLimit: 15 } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9599a6', stepSize: 1 }, suggestedMax: maxDaily + Math.ceil(maxDaily * 0.3) + 1 },
+      },
+    },
+  });
+
+  PRIORITY_ORDER.forEach(p => {
+    const found = resolutionByPriority.find(r => r.priority === p);
+    const target = slaPriorityTargets.find(t => t.priority === p);
+    const el = document.getElementById(`ov-res-${p}`);
+
+    if (found && target) {
+      el.textContent = `${formatDuration(found.avg_resolution)} / ${formatDuration(target.resolution_minutes)}`;
+      el.style.color = found.avg_resolution <= target.resolution_minutes ? '#34d399' : '#f87171';
+    } else {
+      el.textContent = found ? formatDuration(found.avg_resolution) : '-';
+      el.style.color = '';
+    }
+  });
+
+  const hourlyFull = Array.from({ length: 24 }, (_, i) => {
+    const found = hourly.find(r => r.hour === i);
+    return found ? found.total : 0;
+  });
+  
+  renderChart('chart-ov-hourly', {
+    type: 'bar',
+    data: {
+      labels: Array.from({ length: 24 }, (_, i) => i + 'h'),
+      datasets: [{ label: 'Conversas criadas', data: hourlyFull, backgroundColor: '#29a3ff', borderRadius: 4 }],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, title: { display: true, text: 'Por hora do dia', color: '#e8e8ea' } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#9599a6' } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9599a6', stepSize: 1 } },
+      },
+    },
+  });
+
+  const weekdayFull = Array.from({ length: 7 }, (_, i) => {
+    const found = weekday.find(r => r.weekday === i);
+    return found ? found.total : 0;
+  });
+  
+  renderChart('chart-ov-weekday', {
+    type: 'bar',
+    data: {
+      labels: WEEKDAY_LABELS,
+      datasets: [{ label: 'Conversas criadas', data: weekdayFull, backgroundColor: '#a679ff', borderRadius: 4 }],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, title: { display: true, text: 'Por dia da semana', color: '#e8e8ea' } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#9599a6' } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9599a6', stepSize: 1 } },
+      },
+    },
+  });
+}
+
 Screens.overview = {
   template: `
     <div class="filter-bar">
@@ -85,127 +199,29 @@ Screens.overview = {
     </div>
   `,
   load: async function () {
-    let selectedDays = 30;
+    let selectedDays = Number(localStorage.getItem('monitor-filter-days')) || 30;
+
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.days) === selectedDays);
+    });
 
     document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         selectedDays = Number(btn.dataset.days);
+        localStorage.setItem('monitor-filter-days', selectedDays);
+        
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        fetchAndRender(selectedDays);
+        
+        const content = document.getElementById('content');
+        content.classList.add('loading');
+        
+        await renderOverviewData(selectedDays); 
+        
+        content.classList.remove('loading');
       });
     });
 
-    async function fetchAndRender(days) {
-      const [kpis, daily, hourly, weekday, settings, resolutionByPriority, reopenRate, slaPriorityTargets] = await Promise.all([
-        fetch(`/monitor/api/overview?days=${days}`).then(r => r.json()),
-        fetch(`/monitor/api/overview/daily?days=${days}`).then(r => r.json()),
-        fetch(`/monitor/api/overview/hourly?days=${days}`).then(r => r.json()),
-        fetch(`/monitor/api/overview/weekday?days=${days}`).then(r => r.json()),
-        fetch('/monitor/api/settings').then(r => r.json()),
-        fetch(`/monitor/api/overview/resolution-by-priority?days=${days}`).then(r => r.json()),
-        fetch(`/monitor/api/overview/reopen-rate?days=${days}`).then(r => r.json()),
-        fetch('/monitor/api/sla-priority-targets').then(r => r.json()),
-      ]);
-
-      document.getElementById('ov-frt').textContent = formatDuration(kpis.avg_first_response);
-      document.getElementById('ov-res').textContent = formatDuration(kpis.avg_resolution);
-      document.getElementById('ov-total-resolved').textContent = kpis.total ?? 0;
-      document.getElementById('ov-total-open').textContent = kpis.total_open ?? 0;
-
-      const slaEl = document.getElementById('ov-sla');
-      if (kpis.total) {
-        const current = ((1 - kpis.resolution_breach_rate) * 100).toFixed(0);
-        const target = settings.sla_target_percent || 95;
-        slaEl.textContent = `${current}% / ${target}%`;
-        slaEl.style.color = Number(current) >= Number(target) ? '#34d399' : '#f87171';
-      } else {
-        slaEl.textContent = '-';
-      }
-
-      const reopenPct = kpis.total ? ((reopenRate.reopened / kpis.total) * 100).toFixed(1) : '0.0';
-      document.getElementById('ov-reopen-rate').textContent = `${reopenPct}%`;
-
-      const maxDaily = Math.max(
-        ...daily.map(r => r.created_whatsapp + r.created_email + r.created_other),
-        ...daily.map(r => r.resolved), 0
-      );
-      renderChart('chart-ov-daily', {
-        type: 'line',
-        data: {
-          labels: daily.map(r => new Date(r.day).toLocaleDateString('pt-BR')),
-          datasets: [
-            { label: 'Criadas WhatsApp', data: daily.map(r => r.created_whatsapp), borderColor: '#34d399', backgroundColor: '#34d399', tension: 0.3, fill: false },
-            { label: 'Criadas E-mail', data: daily.map(r => r.created_email), borderColor: '#29a3ff', backgroundColor: '#29a3ff', tension: 0.3, fill: false },
-            { label: 'Outros', data: daily.map(r => r.created_other), borderColor: '#9296b8', backgroundColor: '#9296b8', tension: 0.3, fill: false },
-            { label: 'Resolvidas', data: daily.map(r => r.resolved), borderColor: '#ffc247', backgroundColor: '#ffc247', tension: 0.3, fill: false },
-          ],
-        },
-        options: {
-          maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: '#e8e8ea' } } },
-          scales: {
-            x: { grid: { display: false }, ticks: { color: '#9599a6', maxTicksLimit: 15 } },
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9599a6', stepSize: 1 }, suggestedMax: maxDaily + Math.ceil(maxDaily * 0.3) + 1 },
-          },
-        },
-      });
-
-      PRIORITY_ORDER.forEach(p => {
-        const found = resolutionByPriority.find(r => r.priority === p);
-        const target = slaPriorityTargets.find(t => t.priority === p);
-        const el = document.getElementById(`ov-res-${p}`);
-
-        if (found && target) {
-          el.textContent = `${formatDuration(found.avg_resolution)} / ${formatDuration(target.resolution_minutes)}`;
-          el.style.color = found.avg_resolution <= target.resolution_minutes ? '#34d399' : '#f87171';
-        } else {
-          el.textContent = found ? formatDuration(found.avg_resolution) : '-';
-          el.style.color = '';
-        }
-      });
-
-      const hourlyFull = Array.from({ length: 24 }, (_, i) => {
-        const found = hourly.find(r => r.hour === i);
-        return found ? found.total : 0;
-      });
-      renderChart('chart-ov-hourly', {
-        type: 'bar',
-        data: {
-          labels: Array.from({ length: 24 }, (_, i) => i + 'h'),
-          datasets: [{ label: 'Conversas criadas', data: hourlyFull, backgroundColor: '#29a3ff', borderRadius: 4 }],
-        },
-        options: {
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false }, title: { display: true, text: 'Por hora do dia', color: '#e8e8ea' } },
-          scales: {
-            x: { grid: { display: false }, ticks: { color: '#9599a6' } },
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9599a6', stepSize: 1 } },
-          },
-        },
-      });
-
-      const weekdayFull = Array.from({ length: 7 }, (_, i) => {
-        const found = weekday.find(r => r.weekday === i);
-        return found ? found.total : 0;
-      });
-      renderChart('chart-ov-weekday', {
-        type: 'bar',
-        data: {
-          labels: WEEKDAY_LABELS,
-          datasets: [{ label: 'Conversas criadas', data: weekdayFull, backgroundColor: '#a679ff', borderRadius: 4 }],
-        },
-        options: {
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false }, title: { display: true, text: 'Por dia da semana', color: '#e8e8ea' } },
-          scales: {
-            x: { grid: { display: false }, ticks: { color: '#9599a6' } },
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9599a6', stepSize: 1 } },
-          },
-        },
-      });
-    }
-
-    await fetchAndRender(selectedDays);
-  },
+    await renderOverviewData(selectedDays); 
+  }
 };

@@ -64,7 +64,7 @@ function showToast(message, type = 'success') {
 }
 
 async function renderRoute() {
-  let route = location.hash.replace('#', '') || (currentUser.role === 'administrator' ? 'today' : 'me');
+  let route = location.hash.replace('#', '') || (currentUser.role === 'administrator' ? 'homepage' : 'me');
   
   const allowedForAgents = ['me', 'conversations'];
   if (currentUser.role !== 'administrator' && !allowedForAgents.includes(route)) {
@@ -74,10 +74,8 @@ async function renderRoute() {
   document.querySelectorAll('#nav-list li[data-route]').forEach(li => li.classList.toggle('active', li.dataset.route === route));
   
   const content = document.getElementById('content');
-  const loader = document.getElementById('global-loader');
-  
-  loader.classList.remove('hidden');
   content.classList.remove('fade-in');
+  content.classList.add('loading');
   void content.offsetWidth;
   
   content.innerHTML = Screens[route].template;
@@ -88,15 +86,26 @@ async function renderRoute() {
     console.error(error);
     showToast('Erro ao carregar dados da tela', 'error');
   } finally {
-    loader.classList.add('hidden');
+    content.classList.remove('loading');
     content.classList.add('fade-in');
   }
 }
 
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('user-dropdown-content');
+  if (e.target.closest('#user-menu-btn')) {
+    dropdown.classList.toggle('show');
+  } else if (dropdown && dropdown.classList.contains('show')) {
+    dropdown.classList.remove('show');
+  }
+});
+
 const NAV_CONFIG = [
   { section: 'Visão Geral', items: [
+    { route: 'homepage', label: 'Homepage', icon: 'bi-house', adminOnly: true },
     { route: 'today', label: 'Visão Hoje', icon: 'bi-graph-up', adminOnly: true },
-    { route: 'overview', label: 'Dashboard', icon: 'bi-speedometer2', adminOnly: true },
+    { route: 'overview', label: 'Volume', icon: 'bi-speedometer2', adminOnly: true },
+    { route: 'sla', label: 'SLA', icon: 'bi-shield-check', adminOnly: true },
   ]},
   { section: 'Operacional', items: [
     { route: 'agents', label: 'Agentes', icon: 'bi-people', adminOnly: true },
@@ -127,6 +136,28 @@ function renderNav() {
   });
   document.getElementById('nav-list').innerHTML = html;
 }
+
+function openProfileModal() {
+  const roleMap = {
+    'administrator': 'Administrador',
+    'agent': 'Agente'
+  };
+  
+  document.getElementById('profile-modal-name').textContent = currentUser.name || 'Usuário';
+  document.getElementById('profile-modal-role').textContent = roleMap[currentUser.role] || currentUser.role;
+  document.getElementById('profile-modal-account').textContent = currentUser.account_id || '-';
+  document.getElementById('profile-modal').classList.remove('hidden');
+}
+
+function closeProfileModal() {
+  document.getElementById('profile-modal').classList.add('hidden');
+}
+
+document.getElementById('profile-modal').addEventListener('click', function(e) {
+  if (e.target === this) {
+    closeProfileModal();
+  }
+});
 
 function setupSidebarToggle() {
   const toggle = document.getElementById('sidebar-toggle');
