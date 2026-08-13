@@ -59,9 +59,29 @@ CREATE TABLE IF NOT EXISTS monitor.settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS monitor.teams (
+    team_id INT PRIMARY KEY,
+    team_name TEXT NOT NULL
+);
+
+INSERT INTO monitor.teams (team_id, team_name) VALUES
+    (1, 'Dev'), (2, 'Fiscal'), (3, 'Departamento Pessoal'), (4, 'Financeiro'),
+    (5, 'Contábil'), (7, 'Comercial'), (8, 'Outros'), (9, 'Triagem')
+ON CONFLICT (team_id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS monitor.label_colors (
+    label TEXT PRIMARY KEY,
+    color TEXT NOT NULL
+);
 """
 
-TEAM_NAMES_BACKEND = {1: "Dev", 2: "Fiscal", 3: "Departamento Pessoal", 4: "Financeiro", 5: "Contábil", 7: "Comercial", 8: "Outros", 9: "Triagem"}
+DEFAULT_LABEL_COLOR = "#9296b8"
+
+async def get_team_names(conn) -> dict:
+    rows = await conn.fetch("SELECT team_id, team_name FROM monitor.teams")
+    return {r["team_id"]: r["team_name"] for r in rows}
+
 
 ALLOWED_DAYS = {7, 30, 90}
 ALLOWED_DAYS_EXTENDED = {7, 14, 30, 90, 180}

@@ -2,6 +2,24 @@ const charts = {};
 const Screens = {};
 let currentUser = null;
 
+const DEFAULT_LABEL_COLOR = '#9296b8';
+let TEAM_NAMES = {};
+let LABEL_COLORS = {};
+
+async function loadGlobalConfig() {
+  const [teams, labelColors] = await Promise.all([
+    fetch('/monitor/api/teams').then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch('/monitor/api/label-colors').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+  ]);
+  TEAM_NAMES = {};
+  teams.forEach(t => { TEAM_NAMES[t.team_id] = t.team_name; });
+  LABEL_COLORS = labelColors;
+}
+
+function getLabelColor(label) {
+  return LABEL_COLORS[(label || '').toLowerCase()] || DEFAULT_LABEL_COLOR;
+}
+
 Chart.defaults.animation.duration = 1200;
 Chart.defaults.animation.easing = 'easeOutQuart';
 Chart.defaults.font.family = '-apple-system, Helvetica, Arial, sans-serif';

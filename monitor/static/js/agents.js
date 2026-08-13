@@ -1,4 +1,3 @@
-const TEAM_NAMES = { 1: 'Dev', 2: 'Fiscal', 3: 'Departamento Pessoal', 4: 'Financeiro', 5: 'Contábil', 7: 'Comercial', 8: 'Outros', 9: 'Triagem' };
 
 const AVAILABILITY_MAP = {
   online: { label: 'Online', color: '#34d399' },

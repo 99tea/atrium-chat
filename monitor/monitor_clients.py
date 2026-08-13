@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Depends
 from auth import require_admin
-from monitor_core import _validate_days_extended, get_inbox_channel_map, resolve_channel, TEAM_NAMES_BACKEND
+from monitor_core import _validate_days_extended, get_inbox_channel_map, resolve_channel, get_team_names
 
 router = APIRouter()
 
@@ -121,6 +121,7 @@ async def client_detail(client_key: str, request: Request, days: int = 30, user=
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
+        team_names = await get_team_names(conn)
 
         if client_key.startswith("sem-codigo-"):
             contact_id = client_key.replace("sem-codigo-", "", 1)
@@ -187,7 +188,7 @@ async def client_detail(client_key: str, request: Request, days: int = 30, user=
         "by_team": [
             {
                 "team_id": r["team_id"],
-                "team_name": TEAM_NAMES_BACKEND.get(r["team_id"], f"Time {r['team_id']}" if r["team_id"] else "Sem time"),
+                "team_name": team_names.get(r["team_id"], f"Time {r['team_id']}" if r["team_id"] else "Sem time"),
                 "total": r["total"],
                 "avg_resolution": r["avg_resolution"],
                 "total_minutes": r["total_minutes"],
@@ -202,6 +203,7 @@ async def departments_client_time(request: Request, days: int = 30, user=Depends
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
+        team_names = await get_team_names(conn)
         rows = await conn.fetch(
             """
             SELECT cs.team_id,
@@ -222,7 +224,7 @@ async def departments_client_time(request: Request, days: int = 30, user=Depends
 
     by_team = {}
     for r in rows:
-        t = by_team.setdefault(r["team_id"], {"team_id": r["team_id"], "team_name": TEAM_NAMES_BACKEND.get(r["team_id"], f"Time {r['team_id']}"), "total_minutes": 0, "total_conversations": 0, "clients": 0})
+        t = by_team.setdefault(r["team_id"], {"team_id": r["team_id"], "team_name": team_names.get(r["team_id"], f"Time {r['team_id']}"), "total_minutes": 0, "total_conversations": 0, "clients": 0})
         t["total_minutes"] += r["total_minutes"] or 0
         t["total_conversations"] += r["total"]
         t["clients"] += 1

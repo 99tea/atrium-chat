@@ -280,24 +280,12 @@ Screens.today = {
     });
     if (priorityContainer.innerHTML === '') priorityContainer.innerHTML = '<div class="empty-state" style="width: 100%; padding: 10px;"><i class="bi bi-inbox" style="font-size: 1.5rem;"></i><span>Nenhum chamado aberto</span></div>';
 
-    const labelColors = {
-      'aberto': '#00FFD3',
-      'andamento': '#FFFB00',
-      'cancelado': '#FF0000',
-      'cliente-cadastrado': '#29a3ff',
-      'concluído': '#12FF00',
-      'depto-pessoal': '#a679ff',
-      'pendente-cliente': '#5606EE',
-      'pendente-terceiro': '#23B382',
-      'resolvido': '#12FF00',
-    };
-
     const labelContainer = document.getElementById('label-list');
     if (!statusBreakdown.labels || statusBreakdown.labels.length === 0) {
       labelContainer.innerHTML = '<div class="empty-state" style="width: 100%; padding: 10px;"><i class="bi bi-tag" style="font-size: 1.5rem;"></i><span>Nenhuma etiqueta em uso</span></div>';
     } else {
       statusBreakdown.labels.forEach(l => {
-        const color = labelColors[l.label.toLowerCase()] || '#9296b8';
+        const color = getLabelColor(l.label);
         const el = renderKpiRow(l.label, l.total, color, 
             () => openKpiModal('breakdown', `/monitor/api/today/conversations/label/${encodeURIComponent(l.label)}`, `Etiqueta: ${l.label}`));
         labelContainer.appendChild(el);

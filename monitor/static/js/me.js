@@ -6,18 +6,6 @@ const ME_CHANNEL_MAP = {
   other: { label: 'Outros', badge: 'badge-neutral', icon: 'bi-chat-dots' } 
 };
 
-const ME_LABEL_COLORS = {
-  'aberto': '#00FFD3',
-  'andamento': '#FFFB00',
-  'cancelado': '#FF0000',
-  'cliente-cadastrado': '#29a3ff',
-  'concluído': '#12FF00',
-  'depto-pessoal': '#a679ff',
-  'pendente-cliente': '#5606EE',
-  'pendente-terceiro': '#23B382',
-  'resolvido': '#12FF00',
-};
-
 function meSlaBadge(row) {
   if (row.minutes_remaining === null || row.minutes_remaining === undefined) {
     return `<span class="badge badge-neutral" style="display:inline-flex; align-items:center; gap:4px;"><i class="bi bi-clock-history"></i> Sem meta</span>`;
@@ -48,7 +36,7 @@ function mePriorityBadge(priority) {
 }
 
 function meLabelBadge(label) {
-  const hex = ME_LABEL_COLORS[label.toLowerCase()] || '#9296b8';
+  const hex = getLabelColor(label);
   return `<span class="badge badge-neutral" style="margin-right:4px; display:inline-flex; align-items:center; gap:6px; padding-left:8px;">
             <span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${hex}; box-shadow: 0 0 4px ${hex}80;"></span>
             ${label}
