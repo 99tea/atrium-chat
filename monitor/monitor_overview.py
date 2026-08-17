@@ -12,27 +12,15 @@ async def overview(request: Request, days: int = 30, user=Depends(require_admin)
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            WITH sla_stats AS (
-                SELECT count(*) AS total_resolved,
-                    avg(first_response_minutes) AS avg_first_response,
-                    avg(resolution_minutes) AS avg_resolution,
-                    sum((resolution_minutes > target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
-                FROM monitor.v_sla
-                WHERE last_resolved_at >= now() - make_interval(days => $1)
-            ),
-            created_stats AS (
-                SELECT count(DISTINCT conversation_id) AS total_open
-                FROM monitor.conversation_events
-                WHERE event_type = 'created'
-                  AND occurred_at >= now() - make_interval(days => $1)
-            )
             SELECT
-                COALESCE(s.total_resolved, 0) AS total,
-                s.avg_first_response,
-                s.avg_resolution,
-                s.resolution_breach_rate,
-                COALESCE(c.total_open, 0) AS total_open
-            FROM sla_stats s CROSS JOIN created_stats c
+                count(DISTINCT e.conversation_id) FILTER (WHERE e.event_type = 'created') AS total_open,
+                count(*) FILTER (WHERE e.event_type = 'status_changed' AND e.to_value = 'resolved') AS total_resolved,
+                count(*) FILTER (
+                    WHERE e.event_type = 'status_changed' AND e.to_value = 'resolved' AND cs.excluded_from_metrics
+                ) AS total_cancelled
+            FROM monitor.conversation_events e
+            JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
+            WHERE e.occurred_at >= now() - make_interval(days => $1)
             """,
             days,
         )
@@ -106,20 +94,63 @@ async def overview_weekday(request: Request, days: int = 30, user=Depends(requir
     return [dict(r) for r in rows]
 
 
-@router.get("/monitor/api/overview/resolution-by-priority")
-async def overview_resolution_by_priority(request: Request, days: int = 30, user=Depends(require_admin)):
+@router.get("/monitor/api/overview/priority-distribution")
+async def overview_priority_distribution(request: Request, days: int = 30, user=Depends(require_admin)):
     days = _validate_days(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT COALESCE(cs.priority, 'none') AS priority,
-                avg(v.resolution_minutes) AS avg_resolution,
-                count(*) AS total
-            FROM monitor.v_sla v
-            JOIN monitor.conversation_snapshot cs ON cs.conversation_id = v.conversation_id
-            WHERE v.last_resolved_at >= now() - make_interval(days => $1)
+            SELECT COALESCE(cs.priority, 'none') AS priority, count(*) AS total
+            FROM monitor.conversation_events e
+            JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
+            WHERE e.event_type = 'created' AND e.occurred_at >= now() - make_interval(days => $1)
             GROUP BY priority
+            """,
+            days,
+        )
+    return [dict(r) for r in rows]
+
+
+@router.get("/monitor/api/overview/channel-distribution")
+async def overview_channel_distribution(request: Request, days: int = 30, user=Depends(require_admin)):
+    days = _validate_days(days)
+    pool = request.app.state.monitor_pool
+    async with pool.acquire() as conn:
+        whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
+        rows = await conn.fetch(
+            """
+            SELECT inbox_id, count(*) AS total
+            FROM monitor.conversation_events
+            WHERE event_type = 'created' AND occurred_at >= now() - make_interval(days => $1)
+            GROUP BY inbox_id
+            """,
+            days,
+        )
+
+    by_channel = {"whatsapp": 0, "email": 0, "other": 0}
+    for r in rows:
+        channel = resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)
+        by_channel[channel] += r["total"]
+    return by_channel
+
+
+@router.get("/monitor/api/overview/company-distribution")
+async def overview_company_distribution(request: Request, days: int = 30, user=Depends(require_admin)):
+    days = _validate_days(days)
+    pool = request.app.state.monitor_pool
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT cs.company_name, count(*) AS total
+            FROM monitor.conversation_events e
+            JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
+            WHERE e.event_type = 'created'
+              AND e.occurred_at >= now() - make_interval(days => $1)
+              AND cs.company_name IS NOT NULL AND cs.company_name <> ''
+            GROUP BY cs.company_name
+            ORDER BY total DESC
+            LIMIT 10
             """,
             days,
         )

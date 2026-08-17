@@ -175,7 +175,9 @@ async def today_first_response(request: Request, user=Depends(require_admin)):
                 count(*) AS total
             FROM first_response_evt fr
             JOIN created_evt ce ON ce.conversation_id = fr.conversation_id
+            JOIN monitor.conversation_snapshot s ON s.conversation_id = fr.conversation_id
             WHERE fr.responded_at >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+              AND NOT s.excluded_from_metrics
             """
         )
     return dict(row) if row else {"avg_first_response": None, "total": 0}

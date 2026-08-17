@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, HTTPException
 from datetime import datetime, timezone
 from typing import Optional
 from auth import get_current_user
 from monitor_core import get_inbox_channel_map, resolve_channel
+import httpx
+import os
 
 router = APIRouter()
+
+CHATWOOT_URL = os.environ["CHATWOOT_URL"]
 
 ALLOWED_SORT = {
     "created_at": "created_at",
@@ -36,7 +40,9 @@ async def list_conversations(
     where = []
     params = []
 
-    if status != "all":
+    if status == "cancelled":
+        where.append("cs.status = 'resolved' AND cs.excluded_from_metrics = true")
+    elif status != "all":
         params.append(status)
         where.append(f"cs.status = ${len(params)}")
 
@@ -59,7 +65,7 @@ async def list_conversations(
         WITH base AS (
             SELECT cs.conversation_id, cs.inbox_id, cs.status, cs.priority, cs.subject,
                 cs.contact_name, cs.company_name, cs.assignee_name, cs.team_id, cs.labels,
-                cs.updated_at, l.created_at,
+                cs.updated_at, cs.excluded_from_metrics, l.created_at,
                 v.first_response_minutes, v.resolution_minutes, v.target_resolution_minutes, v.last_resolved_at,
                 pt.resolution_minutes AS target_minutes,
                 CASE
@@ -119,3 +125,30 @@ async def conversations_labels(request: Request, user=Depends(get_current_user))
             """
         )
     return [r["label"] for r in rows]
+
+
+@router.get("/monitor/api/conversations/{conversation_id}/notes")
+async def conversation_notes(conversation_id: int, request: Request, user=Depends(get_current_user)):
+    account_id = user["account_id"]
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            f"{CHATWOOT_URL}/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages",
+            headers={"api_access_token": user["access_token"]},
+        )
+    if r.status_code != 200:
+        raise HTTPException(502, "falha ao consultar notas no Chatwoot")
+
+    data = r.json()
+    messages = data.get("payload", data) if isinstance(data, dict) else data
+
+    notes = [
+        {
+            "content": m.get("content"),
+            "sender_name": (m.get("sender") or {}).get("name") or "Sistema",
+            "created_at": m.get("created_at"),
+        }
+        for m in messages
+        if m.get("private") and m.get("content")
+    ]
+    notes.sort(key=lambda n: n["created_at"] or 0, reverse=True)
+    return notes

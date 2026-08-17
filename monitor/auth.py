@@ -4,10 +4,15 @@ import httpx
 import os
 
 router = APIRouter()
+
 SECRET_KEY = os.environ["MONITOR_SECRET_KEY"]
 serializer = URLSafeTimedSerializer(SECRET_KEY)
 COOKIE_NAME = "monitor_session"
 CHATWOOT_URL = os.environ["CHATWOOT_URL"]
+
+DEV_USER_IDS = {
+    int(x.strip()) for x in os.environ.get("DEV_USER_IDS", "").split(",") if x.strip().isdigit()
+}
 
 
 async def get_current_user(request: Request):
@@ -22,6 +27,12 @@ async def get_current_user(request: Request):
 
 def require_admin(user=Depends(get_current_user)):
     if user["role"] != "administrator":
+        raise HTTPException(403, "forbidden")
+    return user
+
+
+def require_developer(user=Depends(get_current_user)):
+    if not user.get("is_developer"):
         raise HTTPException(403, "forbidden")
     return user
 
@@ -41,9 +52,24 @@ async def login(request: Request, response: Response):
     if (profile.get("email") or "").strip().lower() != email:
         raise HTTPException(401, "email não corresponde ao token")
     account = (profile.get("accounts") or [{}])[0]
-    session_data = {"id": profile["id"], "name": profile["name"], "role": account.get("role", "agent"), "account_id": account.get("id"), "access_token": token}
+    is_developer = profile["id"] in DEV_USER_IDS
+    session_data = {
+        "id": profile["id"],
+        "name": profile["name"],
+        "role": account.get("role", "agent"),
+        "account_id": account.get("id"),
+        "access_token": token,
+        "is_developer": is_developer,
+    }
     response.set_cookie(COOKIE_NAME, serializer.dumps(session_data), httponly=True, samesite="lax", max_age=60 * 60 * 12)
-    return {"id": session_data["id"], "name": session_data["name"], "role": session_data["role"], "account_id": session_data["account_id"]}
+    return {
+        "id": session_data["id"],
+        "name": session_data["name"],
+        "role": session_data["role"],
+        "account_id": session_data["account_id"],
+        "is_developer": is_developer,
+    }
+
 
 @router.post("/monitor/api/logout")
 async def logout(response: Response):
@@ -53,4 +79,10 @@ async def logout(response: Response):
 
 @router.get("/monitor/api/me")
 async def me(user=Depends(get_current_user)):
-    return {"id": user["id"], "name": user["name"], "role": user["role"], "account_id": user["account_id"]}
+    return {
+        "id": user["id"],
+        "name": user["name"],
+        "role": user["role"],
+        "account_id": user["account_id"],
+        "is_developer": user.get("is_developer", False),
+    }

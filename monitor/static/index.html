@@ -17,9 +17,24 @@
       <button id="sidebar-toggle" class="sidebar-toggle" data-tooltip="Expandir/Recolher"><i class="bi bi-list"></i></button>
       <img src="img/dark_logo.png" alt="" class="topbar-logo">
       <span class="topbar-title">Australis Monitor</span>
+      <button class="topbar-search-btn" onclick="openCmd()">
+        <i class="bi bi-search"></i>
+        <span>Busca rápida...</span>
+        <div class="topbar-kbd">Ctrl K</div>
+      </button>
     </div>
 		<div class="topbar-right">
 			<div style="display: flex; align-items: center; gap: 12px; padding-right: 16px; border-right: 1px solid var(--border); margin-right: 16px;">
+			  <div class="dropdown" style="position: relative; display: inline-block;">
+			    <button id="export-btn" class="topbar-btn" data-tooltip="Exportar Relatório">
+			      <i class="bi bi-download"></i>
+			    </button>
+			    <div class="dropdown-content" id="export-dropdown-content">
+			      <button onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf"></i> Exportar como PDF</button>
+			      <button onclick="exportToCSV()"><i class="bi bi-file-earmark-spreadsheet"></i> Exportar Tabelas (CSV)</button>
+			    </div>
+			  </div>
+
 			  <div class="auto-refresh-dropdown">
 			    <button id="auto-refresh-btn" class="topbar-btn" data-tooltip="Atualização Automática">
 			      <i class="bi bi-arrow-clockwise"></i> 
@@ -35,9 +50,12 @@
 			  <button onclick="toggleTheme()" class="topbar-btn" data-tooltip="Alternar Tema">
 			    <i class="bi bi-moon-stars" id="theme-icon"></i>
 			  </button>
-			  <button onclick="toggleFullScreen()" class="topbar-btn" data-tooltip="Modo TV (Tela Cheia)">
-			    <i class="bi bi-arrows-fullscreen"></i>
-			  </button>
+				<button onclick="toggleFullScreen()" class="topbar-btn" data-tooltip="Modo TV (Tela Cheia)">
+				  <i class="bi bi-arrows-fullscreen"></i>
+				</button>
+				<button onclick="openBugReportModal()" class="topbar-btn" data-tooltip="Reportar Problema">
+				  <i class="bi bi-bug"></i>
+				</button>
 			</div>
 		  
 		  <div class="user-dropdown">
@@ -97,14 +115,18 @@
     <main id="content"></main>
   </div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
 <script src="js/core.js"></script>
+<script src="js/reports.js"></script>
 <script src="js/me.js"></script>
 <script src="js/homepage.js"></script>
 <script src="js/sla.js"></script>
 <script src="js/overview.js"></script>
 <script src="js/today.js"></script>
 <script src="js/agents.js"></script>
+<script src="js/agent_detail.js"></script>
 <script src="js/conversations.js"></script>
 <script src="js/clients.js"></script>
 <script src="js/settings.js"></script>

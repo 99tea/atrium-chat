@@ -31,6 +31,7 @@ ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS razao_social 
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS regime_tributario TEXT;
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS status_contrato TEXT;
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS demanda_avulsa BOOLEAN;
+ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS excluded_from_metrics BOOLEAN DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS monitor.conversation_events (
     id BIGSERIAL PRIMARY KEY,
@@ -74,9 +75,33 @@ CREATE TABLE IF NOT EXISTS monitor.label_colors (
     label TEXT PRIMARY KEY,
     color TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS monitor.user_tasks (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    content TEXT NOT NULL,
+    done BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS monitor.bug_reports (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    user_name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    screenshot TEXT,
+    route TEXT,
+    status TEXT NOT NULL DEFAULT 'novo',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
 """
 
 DEFAULT_LABEL_COLOR = "#9296b8"
+
+async def get_cancellation_label(conn) -> str:
+    row = await conn.fetchrow("SELECT value FROM monitor.settings WHERE key = 'cancellation_label'")
+    return row["value"] if row else "cancelado"
+
 
 async def get_team_names(conn) -> dict:
     rows = await conn.fetch("SELECT team_id, team_name FROM monitor.teams")
@@ -151,6 +176,9 @@ async def handle_conversation_event(data: dict, pool):
     labels = data.get("labels") or []
 
     async with pool.acquire() as conn:
+        cancellation_label = await get_cancellation_label(conn)
+        excluded_from_metrics = status == "resolved" and cancellation_label in labels
+
         snap = await conn.fetchrow(
             "SELECT status, assignee_id, team_id FROM monitor.conversation_snapshot WHERE conversation_id=$1",
             conversation_id,
@@ -187,18 +215,20 @@ async def handle_conversation_event(data: dict, pool):
                 INSERT INTO monitor.conversation_snapshot
                     (conversation_id, inbox_id, status, assignee_id, assignee_name, team_id,
                      company_name, contact_id, contact_name, priority, subject, labels, updated_at,
-                     cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+                     cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
+                     excluded_from_metrics)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
                 ON CONFLICT (conversation_id) DO UPDATE SET
                     inbox_id = $2, status = $3, assignee_id = $4, assignee_name = $5, team_id = $6,
                     company_name = $7, contact_id = $8, contact_name = $9, priority = $10,
                     subject = $11, labels = $12, updated_at = $13,
                     cd_cliente = $14, razao_social = $15, regime_tributario = $16, status_contrato = $17,
-                    demanda_avulsa = $18
+                    demanda_avulsa = $18, excluded_from_metrics = $19
                 """,
                 conversation_id, inbox_id, status, assignee_id, assignee_name, team_id,
                 company_name, contact_id, contact_name, priority, subject, labels, occurred_at,
                 cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
+                excluded_from_metrics,
            )
 
 

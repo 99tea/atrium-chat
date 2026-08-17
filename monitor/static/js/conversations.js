@@ -1,5 +1,3 @@
-
-
 const CONV_PRIORITY_MAP = { 
   urgent: { label: 'Urgente', badge: 'badge-red', icon: 'bi-exclamation-triangle-fill' }, 
   high: { label: 'Alta', badge: 'badge-red', icon: 'bi-arrow-up-circle-fill' }, 
@@ -65,6 +63,37 @@ const formatDate = (dateString) => {
   return `${d.toLocaleDateString('pt-BR')} <span class="muted-text" style="font-size:0.85em;">${d.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>`;
 };
 
+async function openNotesModal(conversationId) {
+  document.getElementById('notes-modal').classList.remove('hidden');
+  document.getElementById('notes-modal-title').textContent = `Notas internas - Conversa #${conversationId}`;
+  const body = document.getElementById('notes-modal-body');
+  body.innerHTML = '<div class="empty-state" style="padding: 20px;"><i class="bi bi-hourglass-split"></i><span>Carregando...</span></div>';
+
+  const notes = await fetch(`/monitor/api/conversations/${conversationId}/notes`).then(r => r.ok ? r.json() : []).catch(() => []);
+
+  if (notes.length === 0) {
+    body.innerHTML = '<div class="empty-state" style="padding: 20px;"><i class="bi bi-sticky" style="font-size: 1.5rem;"></i><span>Nenhuma nota interna nesta conversa</span></div>';
+    return;
+  }
+
+  body.innerHTML = notes.map(n => {
+    const d = n.created_at ? new Date(n.created_at * 1000) : null;
+    const dateStr = d ? `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}` : '-';
+    return `
+      <div class="note-item" style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+          <span style="font-weight: 600; font-size: 0.9em;"><i class="bi bi-person-circle"></i> ${n.sender_name}</span>
+          <span class="muted-text" style="font-size: 0.8em;">${dateStr}</span>
+        </div>
+        <div style="white-space: pre-wrap; font-size: 0.92em; line-height: 1.5;">${n.content}</div>
+      </div>`;
+  }).join('');
+}
+
+function closeNotesModal() {
+  document.getElementById('notes-modal').classList.add('hidden');
+}
+
 async function fetchConversations() {
   const params = new URLSearchParams();
   Object.entries(convState).forEach(([k, v]) => { if (v !== '' && v !== null) params.set(k, v); });
@@ -81,18 +110,24 @@ async function fetchConversations() {
     ? data.items.map(r => {
         const url = `${chatwootBase}/app/accounts/${accountId}/search?q=${r.conversation_id}`;
         const labels = (r.labels || []).map(labelBadge).join('');
+        const excludedTag = r.excluded_from_metrics
+          ? ' <span class="badge badge-neutral" style="font-size:0.75em; white-space:nowrap;" data-tooltip="Não entra nas métricas de desempenho"><i class="bi bi-slash-circle"></i> Fora da métrica</span>'
+          : '';
         return `
-          <tr>
+          <tr${r.excluded_from_metrics ? ' style="opacity: 0.6;"' : ''}>
             <td>${r.conversation_id}</td>
             <td>${priorityBadge(r.priority)}</td>
             <td>${formatDate(r.created_at)}</td>
             <td>${formatDate(r.updated_at)}</td>
-            <td>${r.subject || '-'}</td>
+            <td>${r.subject || '-'}${excludedTag}</td>
             <td>${r.contact_name || '-'}${r.company_name ? ` <br><span class="muted-text" style="font-size:0.85em;"><i class="bi bi-building"></i> ${r.company_name}</span>` : ''}</td>
             <td>${r.assignee_name || '-'}</td>
             <td style="max-width: 250px; flex-wrap: wrap; gap: 4px;">${labels}</td>
             <td>${slaBadge(r)}</td>
-            <td><i class="bi bi-box-arrow-up-right" style="cursor:pointer;color:var(--accent); font-size: 1.1rem;" onclick="window.open('${url}', '_blank')"></i></td>
+            <td style="white-space: nowrap;">
+              <i class="bi bi-sticky" style="cursor:pointer;color:var(--accent); font-size: 1.1rem; margin-right: 10px;" data-tooltip="Ver notas internas" onclick="openNotesModal(${r.conversation_id})"></i>
+              <i class="bi bi-box-arrow-up-right" style="cursor:pointer;color:var(--accent); font-size: 1.1rem;" onclick="window.open('${url}', '_blank')"></i>
+            </td>
           </tr>`;
       }).join('')
     : '<tr><td colspan="10"><div class="empty-state"><i class="bi bi-inbox" style="font-size: 1.5rem;"></i><span>Nenhuma conversa encontrada</span></div></td></tr>';
@@ -116,6 +151,7 @@ Screens.conversations = {
       <button class="filter-btn active" data-status="open">Abertas</button>
       <button class="filter-btn" data-status="pending">Pendentes</button>
       <button class="filter-btn" data-status="resolved">Resolvidas</button>
+      <button class="filter-btn" data-status="cancelled">Canceladas</button>
       <button class="filter-btn" data-status="all">Todas</button>
     </div>
 
@@ -163,8 +199,27 @@ Screens.conversations = {
         </div>
       </div>
     </div>
+
+    <div id="notes-modal" class="modal hidden">
+      <div class="modal-content">
+        <button class="modal-close" onclick="closeNotesModal()">&times;</button>
+        <h3 id="notes-modal-title"></h3>
+        <div id="notes-modal-body" style="max-height: 65vh; overflow-y: auto; margin-top: 14px;"></div>
+      </div>
+    </div>
   `,
   load: async function () {
+    const oldModal = document.querySelector('body > #notes-modal');
+    if (oldModal) oldModal.remove();
+
+    const modalEl = document.getElementById('notes-modal');
+    if (modalEl) {
+      document.body.appendChild(modalEl);
+      modalEl.addEventListener('click', function (e) {
+        if (e.target === this) closeNotesModal();
+      });
+    }
+
     convState = { status: 'open', label: '', assignee_id: '', search: '', sort_by: 'sla_deadline', sort_dir: 'asc', page: 1, page_size: 50 };
 
     const [labels, agents] = await Promise.all([

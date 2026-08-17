@@ -1,16 +1,7 @@
-
 const AVAILABILITY_MAP = {
-  online: { label: 'Online', color: '#34d399' },
-  busy: { label: 'Ocupado', color: '#ffc247' },
-  offline: { label: 'Offline', color: '#9296b8' },
-};
-
-const AGENT_PRIORITY_MAP = { 
-  urgent: { label: 'Urgente', badge: 'badge-red', icon: 'bi-exclamation-triangle-fill' }, 
-  high: { label: 'Alta', badge: 'badge-red', icon: 'bi-arrow-up-circle-fill' }, 
-  medium: { label: 'Média', badge: 'badge-yellow', icon: 'bi-dash-circle-fill' }, 
-  low: { label: 'Baixa', badge: 'badge-neutral', icon: 'bi-arrow-down-circle-fill' }, 
-  none: { label: 'Nenhuma', badge: 'badge-neutral', icon: 'bi-info-circle-fill' } 
+  online: { label: 'Online', badge: 'badge-green', icon: 'bi-circle-fill' },
+  busy: { label: 'Ocupado', badge: 'badge-yellow', icon: 'bi-dash-circle-fill' },
+  offline: { label: 'Offline', badge: 'badge-neutral', icon: 'bi-circle' },
 };
 
 let agentsData = [];
@@ -19,9 +10,8 @@ let agentsSortDir = 'asc';
 
 function availabilityBadge(status) {
   const info = AVAILABILITY_MAP[status] || AVAILABILITY_MAP.offline;
-  return `<span class="badge badge-neutral" style="display:inline-flex; align-items:center; gap:6px; padding: 4px 8px;">
-            <span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${info.color}; box-shadow: 0 0 5px ${info.color}90;"></span>
-            ${info.label}
+  return `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:6px; padding: 4px 8px;">
+            <i class="bi ${info.icon}" style="font-size: 0.55rem;"></i> ${info.label}
           </span>`;
 }
 
@@ -32,15 +22,27 @@ function slaTableRow(r) {
               <td colspan="3"><div class="empty-state" style="padding: 4px;"><span style="font-size: 0.8rem;">Sem dados</span></div></td>
             </tr>`;
   }
-  
+
   const color = r.sla_percent >= 95 ? 'var(--accent-green)' : (r.sla_percent >= 80 ? 'var(--accent-yellow)' : 'var(--accent-red)');
-  
+
   return `<tr>
             <td style="font-weight: 500; white-space: nowrap;" title="${r.assignee_name}">${r.assignee_name}</td>
             <td>${r.total || 0}</td>
             <td style="white-space: nowrap;">${formatDuration(r.avg_first_response)}</td>
-            <td style="color: ${color}; font-weight: 700;">${r.sla_percent}%</td>
+            <td style="text-align: right; color: ${color}; font-weight: 600;">${r.sla_percent}%</td>
           </tr>`;
+}
+
+function rankTableRow(name, valueText, highlightColor = null) {
+  const style = highlightColor ? `color: ${highlightColor}; font-weight: 600;` : '';
+  return `<tr>
+            <td style="font-weight: 500; white-space: nowrap;" title="${name}">${name}</td>
+            <td style="text-align: right; ${style}">${valueText}</td>
+          </tr>`;
+}
+
+function openAgentPage(agentId) {
+  window.open(`${location.origin}${location.pathname}#agent/${agentId}`, '_blank');
 }
 
 function renderAgentsTable() {
@@ -56,14 +58,18 @@ function renderAgentsTable() {
 
   document.querySelector('#agents-table tbody').innerHTML = sorted.map(a => `
     <tr>
-      <td>${a.name || '-'}</td>
+      <td style="font-weight: 500;">${a.name || '-'}</td>
       <td>${availabilityBadge(a.availability_status)}</td>
       <td>${a.assigned}</td>
       <td>${a.resolved_count}</td>
       <td>${a.open_count}</td>
       <td>${a.awaiting_count}</td>
-      <td>${a.reopened}</td>
-      <td><i class="bi bi-box-arrow-up-right" style="cursor:pointer; font-size: 1.1rem;" onclick="openAgentDetailModal(${a.agent_id}, '${(a.name || '').replace(/'/g, "\\'")}')"></i></td>
+      <td>${a.reopened > 0 ? `<span style="color: var(--accent-red); font-weight: 500;">${a.reopened}</span>` : '0'}</td>
+      <td style="text-align: right;">
+        <button class="topbar-btn" style="padding: 4px 8px;" data-tooltip="Visão do Agente" onclick="openAgentPage(${a.agent_id})">
+          <i class="bi bi-box-arrow-up-right" style="font-size: 0.9rem;"></i>
+        </button>
+      </td>
     </tr>
   `).join('');
 
@@ -73,108 +79,16 @@ function renderAgentsTable() {
   });
 }
 
-async function openAgentDetailModal(agentId, agentName) {
-  let selectedDays = 30;
-
-  document.getElementById('agent-detail-modal-title').textContent = agentName;
-  document.getElementById('agent-detail-modal').classList.remove('hidden');
-
-  const filterBtns = document.querySelectorAll('#agent-detail-modal .filter-btn');
-  filterBtns.forEach(btn => {
-    btn.classList.toggle('active', Number(btn.dataset.days) === selectedDays);
-    btn.onclick = () => {
-      selectedDays = Number(btn.dataset.days);
-      filterBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderAgentDetail(agentId, selectedDays);
-    };
-  });
-
-  await renderAgentDetail(agentId, selectedDays);
-}
-
-async function renderAgentDetail(agentId, days) {
-  const detail = await fetch(`/monitor/api/agents/${agentId}/detail?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-
-  const s = detail.summary || {};
-  document.getElementById('agent-detail-frt').textContent = formatDuration(s.avg_first_response);
-  document.getElementById('agent-detail-res').textContent = formatDuration(s.avg_resolution);
-
-  const slaEl = document.getElementById('agent-detail-sla');
-  if (s.total) {
-    const current = ((1 - s.resolution_breach_rate) * 100).toFixed(0);
-    slaEl.textContent = `${current}%`;
-    const target = window.__monitorSettings?.sla_target_percent || 95;
-    slaEl.style.color = Number(current) >= Number(target) ? 'var(--accent-green)' : 'var(--accent-red)';
-  } else {
-    slaEl.textContent = '-';
-    slaEl.style.color = '';
-  }
-
-  const PRIORITY_ORDER = ['urgent', 'high', 'medium', 'low', 'none'];
-  const orderedPriority = PRIORITY_ORDER.map(p => (detail.by_priority || []).find(r => r.priority === p) || { priority: p, total: 0, avg_resolution: null, avg_first_response: null });
-
-  document.querySelector('#agent-detail-priority-table tbody').innerHTML = orderedPriority.map(r => {
-    const prio = String(r.priority || 'none').toLowerCase();
-    const info = AGENT_PRIORITY_MAP[prio] || AGENT_PRIORITY_MAP.none;
-
-    return `
-      <tr>
-        <td>
-          <span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 8px;">
-            <i class="bi ${info.icon}"></i> ${info.label}
-          </span>
-        </td>
-        <td>${r.total}</td>
-        <td>${formatDuration(r.avg_first_response)}</td>
-        <td>${formatDuration(r.avg_resolution)}</td>
-      </tr>
-    `;
-  }).join('');
-
-  const labelColors = {
-    'aberto': '#00FFD3',
-    'andamento': '#FFFB00',
-    'cancelado': '#FF0000',
-    'cliente-cadastrado': '#29a3ff',
-    'concluído': '#12FF00',
-    'depto-pessoal': '#a679ff',
-    'pendente-cliente': '#5606EE',
-    'pendente-terceiro': '#23B382',
-    'resolvido': '#12FF00'
-  };
-
-  document.querySelector('#agent-detail-labels-table tbody').innerHTML = (detail.open_labels || []).length
-    ? detail.open_labels.map(r => {
-        const hex = labelColors[r.label.toLowerCase()] || '#9296b8';
-        
-        return `
-          <tr>
-            <td>
-              <span class="badge badge-neutral" style="display:inline-flex; align-items:center; gap:6px; padding-left:8px;">
-                <span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${hex}; box-shadow: 0 0 4px ${hex}80;"></span>
-                ${r.label}
-              </span>
-            </td>
-            <td>${r.total}</td>
-          </tr>
-        `;
-      }).join('')
-    : `<tr><td colspan="2"><div class="empty-state" style="padding: 15px;"><i class="bi bi-tag" style="font-size: 1.5rem;"></i><span>Nenhuma etiqueta</span></div></td></tr>`;
-}
-
-function closeAgentDetailModal() {
-  document.getElementById('agent-detail-modal').classList.add('hidden');
-}
-
 Screens.agents = {
   template: `
-    <h2>Agentes</h2>
-    <p class="muted-text" style="color: var(--muted); margin-top: -8px; margin-bottom: 16px;">Exibindo dados dos últimos 30 dias</p>
+    <div style="margin-bottom: 24px;">
+      <h2>Agentes</h2>
+      <p class="muted-text" style="color: var(--muted); margin-top: -8px;">Exibindo dados dos últimos 30 dias</p>
+    </div>
 
     <div class="panel" style="margin-bottom: 24px;">
-      <div class="table-responsive">
-        <table id="agents-table">
+      <div class="table-responsive" style="max-height: 450px;">
+        <table id="agents-table" class="sortable">
           <thead>
             <tr>
               <th data-key="name" style="cursor:pointer; white-space: nowrap;">Agente</th>
@@ -193,102 +107,75 @@ Screens.agents = {
     </div>
 
     <div class="grid-3-cols">
+      <!-- Painel 1: Produtividade por Time (Com abas) -->
       <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Criadas por time</h3>
-        <div class="table-responsive" style="flex: 1; max-height: 350px;">
-          <table id="table-team-open">
-            <thead><tr><th>Time</th><th>Total</th><th style="width: 100%;">Proporção</th><th>%</th></tr></thead>
+        <div class="home-panel-header" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+          <h3><i class="bi bi-diagram-3"></i> Times</h3>
+          <div id="tabs-team" style="display: flex; gap: 4px; background: var(--bg); padding: 4px; border-radius: 6px; border: 1px solid var(--border);">
+            <button class="tab-btn active" data-target="team-open" style="border: none; background: var(--panel); border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; cursor: pointer; color: var(--text); font-weight: 500;">Criadas</button>
+            <button class="tab-btn" data-target="team-resolved" style="border: none; background: transparent; border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; cursor: pointer; color: var(--muted);">Resolvidas</button>
+          </div>
+        </div>
+        <div class="table-responsive tab-content" id="team-open" style="flex: 1; max-height: 350px;">
+          <table id="table-team-open" class="sortable">
+            <thead><tr><th data-sort="string">Time</th><th data-sort="number">Total</th><th style="width: 100%;">Volume</th><th data-sort="number">%</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="table-responsive tab-content" id="team-resolved" style="display: none; flex: 1; max-height: 350px;">
+          <table id="table-team-resolved" class="sortable">
+            <thead><tr><th data-sort="string">Time</th><th data-sort="number">Total</th><th style="width: 100%;">Volume</th><th data-sort="number">%</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
       </div>
-      
+
+      <!-- Painel 2: Ranking Geral de SLA -->
       <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Resolvidas por time</h3>
+        <div class="home-panel-header" style="margin-bottom: 16px;">
+          <h3><i class="bi bi-shield-check"></i> SLA Individual</h3>
+        </div>
         <div class="table-responsive" style="flex: 1; max-height: 350px;">
-          <table id="table-team-resolved">
-            <thead><tr><th>Time</th><th>Total</th><th style="width: 100%;">Proporção</th><th>%</th></tr></thead>
+          <table id="table-top-sla" class="sortable">
+            <thead><tr><th data-sort="string">Agente</th><th data-sort="number">Vol.</th><th data-sort="time" style="white-space: nowrap;">1ª Resp.</th><th data-sort="number" style="text-align: right;">SLA</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
       </div>
-      
+
+      <!-- Painel 3: Destaques (Top 10 com abas) -->
       <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Ranking SLA</h3>
-        <div class="table-responsive" style="flex: 1; max-height: 350px;">
-          <table id="table-top-sla">
-            <thead><tr><th>Agente</th><th>Resolvidas</th><th style="white-space: nowrap;">1ª Resposta</th><th>SLA</th></tr></thead>
+        <div class="home-panel-header" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+          <h3><i class="bi bi-trophy"></i> Destaques</h3>
+          <div id="tabs-rank" style="display: flex; gap: 4px; background: var(--bg); padding: 4px; border-radius: 6px; border: 1px solid var(--border);">
+            <button class="tab-btn active" data-target="rank-res" style="border: none; background: var(--panel); border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; cursor: pointer; color: var(--text); font-weight: 500;">Volume</button>
+            <button class="tab-btn" data-target="rank-fast" style="border: none; background: transparent; border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; cursor: pointer; color: var(--muted);">Tempo</button>
+            <button class="tab-btn" data-target="rank-reop" style="border: none; background: transparent; border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; cursor: pointer; color: var(--muted);">Reabertura</button>
+          </div>
+        </div>
+        
+        <div class="table-responsive tab-content" id="rank-res" style="flex: 1; max-height: 350px;">
+          <table id="table-rank-resolved" class="sortable">
+            <thead><tr><th data-sort="string">Agente</th><th data-sort="number" style="text-align: right;">Resolvidas</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
-      </div>
-    </div>
-
-    <div id="agent-detail-modal" class="modal hidden">
-      <div class="modal-content" style="max-width: 900px;">
-        <button class="modal-close" onclick="closeAgentDetailModal()">&times;</button>
-        <h3 id="agent-detail-modal-title"></h3>
-
-        <div class="filter-bar" style="margin-bottom: 20px;">
-          <button class="filter-btn" data-days="7">7D</button>
-          <button class="filter-btn active" data-days="30">30D</button>
-          <button class="filter-btn" data-days="90">90D</button>
+        <div class="table-responsive tab-content" id="rank-fast" style="display: none; flex: 1; max-height: 350px;">
+          <table id="table-rank-fastest" class="sortable">
+            <thead><tr><th data-sort="string">Agente</th><th data-sort="time" style="text-align: right;">1ª Resposta</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
-
-        <div class="cards" style="margin-bottom: 24px;">
-          <div class="card">
-            <i class="bi bi-stopwatch card-icon"></i>
-            <span class="card-label">1ª Resposta</span>
-            <span class="card-value" id="agent-detail-frt">-</span>
-          </div>
-          <div class="card">
-            <i class="bi bi-check2-all card-icon"></i>
-            <span class="card-label">Resolução</span>
-            <span class="card-value" id="agent-detail-res">-</span>
-          </div>
-          <div class="card">
-            <i class="bi bi-shield-check card-icon"></i>
-            <span class="card-label">SLA Atingido</span>
-            <span class="card-value" id="agent-detail-sla">-</span>
-          </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
-          <div style="display: flex; flex-direction: column;">
-            <h3>Resolução por prioridade</h3>
-            <div class="table-responsive" style="margin-bottom: 0;">
-              <table id="agent-detail-priority-table">
-                <thead><tr><th>Prioridade</th><th>Total</th><th style="white-space: nowrap;">1ª Resposta</th><th>Resolução</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div style="display: flex; flex-direction: column;">
-            <h3>Conversas abertas por etiqueta</h3>
-            <div class="table-responsive" style="margin-bottom: 0;">
-              <table id="agent-detail-labels-table">
-                <thead><tr><th>Etiqueta</th><th>Total</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
+        <div class="table-responsive tab-content" id="rank-reop" style="display: none; flex: 1; max-height: 350px;">
+          <table id="table-rank-reopened" class="sortable">
+            <thead><tr><th data-sort="string">Agente</th><th data-sort="number" style="text-align: right;">Reaberturas</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
     </div>
   `,
   load: async function () {
-    const oldModal = document.querySelector('body > #agent-detail-modal');
-    if (oldModal) oldModal.remove();
-
-    const modalEl = document.getElementById('agent-detail-modal');
-    if (modalEl) {
-      document.body.appendChild(modalEl);
-      modalEl.addEventListener('click', function (e) {
-        if (e.target === this) closeAgentDetailModal();
-      });
-    }
-
     const days = 30;
 
     const [summary, status, teamDist, settings, slaRanking, awaitingCount, reopenRate] = await Promise.all([
@@ -302,6 +189,31 @@ Screens.agents = {
     ]);
 
     window.__monitorSettings = settings;
+
+    // Lógica das Abas (Compactação de painéis)
+    function setupTabs(containerId) {
+      const container = document.getElementById(containerId);
+      if(!container) return;
+      const btns = container.querySelectorAll('.tab-btn');
+      btns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          btns.forEach(b => {
+            b.style.background = 'transparent';
+            b.style.color = 'var(--muted)';
+            b.style.fontWeight = 'normal';
+            b.classList.remove('active');
+            document.getElementById(b.dataset.target).style.display = 'none';
+          });
+          btn.style.background = 'var(--panel)';
+          btn.style.color = 'var(--text)';
+          btn.style.fontWeight = '500';
+          btn.classList.add('active');
+          document.getElementById(btn.dataset.target).style.display = 'block';
+        });
+      });
+    }
+    setupTabs('tabs-team');
+    setupTabs('tabs-rank');
 
     const summaryMap = {};
     summary.forEach(r => { summaryMap[r.assignee_id] = r; });
@@ -342,17 +254,17 @@ Screens.agents = {
     function renderTeamProgressTable(tableId, key) {
       const sorted = [...teamDist].sort((a, b) => b[key] - a[key]);
       const total = sorted.reduce((sum, r) => sum + (r[key] || 0), 0);
-      
+
       document.querySelector(`#${tableId} tbody`).innerHTML = sorted.length ? sorted.map(r => {
         const val = r[key] || 0;
         const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
         const name = TEAM_NAMES[r.team_id] || `Time ${r.team_id}`;
-        
+
         return `
           <tr>
             <td style="white-space: nowrap; font-weight: 500;">${name}</td>
             <td>${val}</td>
-            <td style="min-width: 100px; vertical-align: middle;">
+            <td style="min-width: 80px; vertical-align: middle;">
               <div style="width: 100%; background: var(--bg); border-radius: 4px; height: 8px; overflow: hidden; border: 1px solid var(--border);">
                 <div style="width: ${pct}%; background: var(--accent); height: 100%; border-radius: 4px; transition: width 1s ease-in-out;"></div>
               </div>
@@ -388,5 +300,20 @@ Screens.agents = {
     document.querySelector('#table-top-sla tbody').innerHTML = allAgentsSla.length
       ? allAgentsSla.map(slaTableRow).join('')
       : '<tr><td colspan="4"><div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div></td></tr>';
+
+    const resolvedRanking = [...agentsData].filter(a => a.resolved_count > 0).sort((a, b) => b.resolved_count - a.resolved_count).slice(0, 10);
+    document.querySelector('#table-rank-resolved tbody').innerHTML = resolvedRanking.length
+      ? resolvedRanking.map(a => rankTableRow(a.name, a.resolved_count, 'var(--accent-green)')).join('')
+      : '<tr><td colspan="2"><div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div></td></tr>';
+
+    const fastestRanking = allAgentsSla.filter(a => a.avg_first_response !== null && a.total > 0).sort((a, b) => a.avg_first_response - b.avg_first_response).slice(0, 10);
+    document.querySelector('#table-rank-fastest tbody').innerHTML = fastestRanking.length
+      ? fastestRanking.map(a => rankTableRow(a.assignee_name, formatDuration(a.avg_first_response), 'var(--accent-blue)')).join('')
+      : '<tr><td colspan="2"><div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div></td></tr>';
+
+    const reopenedRanking = [...agentsData].filter(a => a.reopened > 0).sort((a, b) => b.reopened - a.reopened).slice(0, 10);
+    document.querySelector('#table-rank-reopened tbody').innerHTML = reopenedRanking.length
+      ? reopenedRanking.map(a => rankTableRow(a.name, a.reopened, 'var(--accent-red)')).join('')
+      : '<tr><td colspan="2"><div class="empty-state" style="padding: 16px;"><i class="bi bi-emoji-smile" style="color: var(--accent-green); font-size: 1.5rem; margin-bottom: 8px;"></i><span>Nenhuma reabertura no período</span></div></td></tr>';
   },
 };
