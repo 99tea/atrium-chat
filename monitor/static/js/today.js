@@ -20,6 +20,26 @@ const TODAY_PRIORITY_MAP = {
   none: { label: 'Nenhuma', badge: 'badge-neutral', icon: 'bi-info-circle-fill' } 
 };
 
+// Nova formatação de tempo inteligente para exibir Dias e Horas
+function formatDetailedDuration(totalMinutes) {
+  if (totalMinutes === null || totalMinutes === undefined) return '-';
+  const minutes = Math.round(totalMinutes);
+  if (minutes < 60) return `${minutes}m`;
+  
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  
+  if (hours < 24) {
+    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+  }
+  
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  
+  if (remainingHours === 0) return `${days}d`;
+  return `${days}d ${remainingHours}h`;
+}
+
 function todayPriorityBadge(val) {
   const prio = String(val ?? 'none').toLowerCase();
   const info = TODAY_PRIORITY_MAP[prio] || TODAY_PRIORITY_MAP.none;
@@ -38,7 +58,7 @@ function todaySlaBadge(minutesRemaining) {
   const late = minutesRemaining < 0;
   const absMinutes = Math.abs(minutesRemaining);
   const icon = late ? 'bi-alarm-fill' : 'bi-stopwatch-fill';
-  return `<span class="badge ${late ? 'badge-red' : 'badge-green'}" style="white-space:nowrap; display:inline-flex; align-items:center; gap:4px;"><i class="bi ${icon}"></i> ${late ? 'Atrasado ' : 'Em '}${formatDuration(absMinutes)}</span>`;
+  return `<span class="badge ${late ? 'badge-red' : 'badge-green'}" style="white-space:nowrap; display:inline-flex; align-items:center; gap:4px;"><i class="bi ${icon}"></i> ${late ? 'Atrasado ' : 'Em '}${formatDetailedDuration(absMinutes)}</span>`;
 }
 
 async function openKpiModal(kpi, endpointOverride = null, titleOverride = null) {
@@ -56,7 +76,7 @@ async function openKpiModal(kpi, endpointOverride = null, titleOverride = null) 
   const defaultTitle = document.querySelector(`[data-kpi="${kpi}"] .card-label`)?.textContent || 'Detalhes';
   
   document.getElementById('kpi-modal-title').textContent = titleOverride || defaultTitle;  
-  document.querySelector('#kpi-modal-table thead').innerHTML = '<tr>' + cols.map(c => `<th>${c[1]}</th>`).join('') + '<th></th></tr>';
+  document.querySelector('#kpi-modal-table thead').innerHTML = '<tr>' + cols.map(c => `<th>${c[1]}</th>`).join('') + '<th style="text-align: right;">Ação</th></tr>';
   
   document.querySelector('#kpi-modal-table tbody').innerHTML = rows.map(r => {
     const url = `${chatwootBase}/app/accounts/${accountId}/search?q=${r.conversation_id}`;
@@ -73,14 +93,7 @@ async function openKpiModal(kpi, endpointOverride = null, titleOverride = null) 
         const statusBadge = status === 'open' ? 'badge-green' : 'badge-neutral';
         val = `<span class="badge ${statusBadge}">${val}</span>`;
       } else if (c[0] === 'age_minutes') {
-        if (val === null || val === undefined) {
-          val = '-';
-        } else {
-          const totalMin = Math.round(val);
-          const days = Math.floor(totalMin / 1440);
-          const hours = Math.floor((totalMin % 1440) / 60);
-          val = days > 0 ? `${days}d ${hours}h` : formatDuration(val);
-        }
+        val = formatDetailedDuration(val);
       } else {
         val = val ?? '-';
       }
@@ -88,7 +101,7 @@ async function openKpiModal(kpi, endpointOverride = null, titleOverride = null) 
       return `<td>${val}</td>`;
     }).join('');
 
-    return `<tr>${rowContent}<td><i class="bi bi-box-arrow-up-right" style="cursor:pointer;color:var(--accent); font-size: 1.1rem;" onclick="window.open('${url}', '_blank')"></i></td></tr>`;
+    return `<tr>${rowContent}<td style="text-align: right;"><button class="topbar-btn" style="padding: 4px 8px;" data-tooltip="Visualizar" onclick="window.open('${url}', '_blank')"><i class="bi bi-box-arrow-up-right" style="font-size: 0.9rem;"></i></button></td></tr>`;
   }).join('');
   
   document.getElementById('kpi-modal').classList.remove('hidden');
@@ -100,63 +113,131 @@ function closeKpiModal() {
 
 Screens.today = {
   template: `
-    <div class="chart-row-top">
-      <div class="chart-hourly">
-        <div class="canvas-container">
+    <div style="display:flex; align-items:center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
+      <div class="home-avatar" style="width: 56px; height: 56px; font-size: 1.4rem; margin-bottom: 0; background: var(--accent-blue);">
+        <i class="bi bi-calendar2-day"></i>
+      </div>
+      <div>
+        <h2 style="margin: 0 0 4px; font-size: 1.4rem;">Visão Hoje</h2>
+        <p class="muted-text" style="margin: 0; font-size: 0.9rem;">Métricas e acompanhamento do dia atual</p>
+      </div>
+    </div>
+
+    <!-- Adicionado min-width: 0 nas colunas para evitar o overflow do chart -->
+    <div class="chart-row-top" style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; margin-bottom: 24px;">
+      
+      <div class="chart-hourly panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+          <h3 style="margin: 0;"><i class="bi bi-bar-chart"></i> Conversas por hora</h3>
+        </div>
+        <div class="canvas-container" style="flex: 1; min-height: 280px; min-width: 0;">
           <canvas id="chart-hourly"></canvas>
         </div>
       </div>
-      <div class="kpi-clickable-group">
-        <div class="kpi-clickable" data-kpi="created-today">
-          <div class="kpi-header">
-            <span class="card-label">Criadas hoje</span>
-            <i class="bi bi-inbox" data-tooltip="Total de conversas iniciadas hoje"></i>
+      
+      <div class="kpi-clickable-group" style="display: flex; flex-direction: column; gap: 16px; min-width: 0;">
+        
+        <div class="kpi-clickable card" data-kpi="created-today" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left;">
+          <div class="kpi-header" style="margin-bottom: 4px;">
+            <span class="card-label" style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Criadas hoje</span>
+            <i class="bi bi-inbox" style="font-size: 1.2rem; color: var(--accent-blue);"></i>
           </div>
-          <span class="card-value" id="kpi-created-today">-</span>
+          <span class="card-value" id="kpi-created-today" style="font-size: 2.2rem; line-height: 1; margin-bottom: 8px;">-</span>
         </div>
-        <div class="kpi-clickable" data-kpi="open">
-          <div class="kpi-header">
-            <span class="card-label">Abertas</span>
-            <i class="bi bi-envelope-open" data-tooltip="Conversas aguardando tratativa"></i>
+
+        <div class="kpi-clickable card" data-kpi="open" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left;">
+          <div class="kpi-header" style="margin-bottom: 4px;">
+            <span class="card-label" style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Abertas</span>
+            <i class="bi bi-envelope-open" style="font-size: 1.2rem; color: var(--accent-yellow);"></i>
           </div>
-          <span class="card-value" id="kpi-open">-</span>
-          <span class="card-compare" id="kpi-open-compare"></span>
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+            <span class="card-value" id="kpi-open" style="font-size: 2.2rem; line-height: 1;">-</span>
+            <div id="kpi-open-badge"></div>
+          </div>
+          <div id="kpi-open-bars" style="width: 100%; display: flex; flex-direction: column; gap: 6px;"></div>
         </div>
-        <div class="kpi-clickable kpi-alert" data-kpi="unassigned">
-          <div class="kpi-header">
-            <span class="card-label">Não atribuídas</span>
-            <i class="bi bi-exclamation-octagon" data-tooltip="Conversas sem agente responsável"></i>
+
+        <div class="kpi-clickable kpi-alert card" data-kpi="unassigned" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left;">
+          <div class="kpi-header" style="margin-bottom: 4px;">
+            <span class="card-label" style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Não atribuídas</span>
+            <i class="bi bi-exclamation-octagon" style="font-size: 1.2rem; color: var(--accent-red);"></i>
           </div>
-          <span class="card-value" id="kpi-unassigned">-</span>
-          <span class="card-compare" id="kpi-unassigned-compare"></span>
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+            <span class="card-value" id="kpi-unassigned" style="font-size: 2.2rem; line-height: 1; color: var(--accent-red);">-</span>
+            <div id="kpi-unassigned-badge"></div>
+          </div>
+          <div id="kpi-unassigned-bars" style="width: 100%; display: flex; flex-direction: column; gap: 6px;"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="grid-3-cols" style="margin-bottom: 24px;">
+      <div class="card" style="flex-direction: row; justify-content: flex-start; gap: 16px; padding: 20px;">
+        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(52, 211, 153, 0.1); color: var(--accent-green); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+          <i class="bi bi-stopwatch"></i>
+        </div>
+        <div style="text-align: left;">
+          <span class="card-label" style="margin: 0 0 4px;">1ª Resposta (Média)</span>
+          <span class="card-value" id="card-frt" style="font-size: 1.5rem;">-</span>
+        </div>
+      </div>
+      <div class="card" style="flex-direction: row; justify-content: flex-start; gap: 16px; padding: 20px;">
+        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(41, 163, 255, 0.1); color: #29a3ff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+          <i class="bi bi-check2-all"></i>
+        </div>
+        <div style="text-align: left;">
+          <span class="card-label" style="margin: 0 0 4px;">Resolução (Média)</span>
+          <span class="card-value" id="card-res" style="font-size: 1.5rem;">-</span>
+        </div>
+      </div>
+      <div class="card" style="flex-direction: row; justify-content: flex-start; gap: 16px; padding: 20px;">
+        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(255, 194, 71, 0.1); color: var(--accent-yellow); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+          <i class="bi bi-shield-check"></i>
+        </div>
+        <div style="text-align: left;">
+          <span class="card-label" style="margin: 0 0 4px;">SLA Atingido</span>
+          <span class="card-value" id="card-sla-met" style="font-size: 1.5rem;">-</span>
         </div>
       </div>
     </div>
 
-    <h2>Backlog atual</h2>
-    <div class="cards" style="margin-bottom: 20px;">
-      <div class="card kpi-clickable" data-kpi="awaiting-agent">
-        <i class="bi bi-hourglass-split card-icon"></i>
-        <span class="card-label">Aguardando resposta</span>
-        <span class="card-value" id="kpi-awaiting-agent">-</span>
+    <div class="panel" style="margin-bottom: 24px;">
+      <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+        <h3 style="margin: 0;"><i class="bi bi-diagram-3"></i> Detalhamento de Fila</h3>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 24px;">
+        <!-- Card Aguardando -->
+        <div class="card kpi-clickable" data-kpi="awaiting-agent" style="margin: 0; padding: 16px; border-color: rgba(41,163,255,0.3); background: linear-gradient(135deg, rgba(41,163,255,0.05), var(--panel) 60%);">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <i class="bi bi-hourglass-split" style="font-size: 1.2rem; color: var(--accent-blue);"></i>
+            <span class="card-label" style="margin: 0; font-size: 0.85rem;">Aguardando Agente</span>
+          </div>
+          <span class="card-value" id="kpi-awaiting-agent" style="font-size: 2rem;">-</span>
+        </div>
+
+        <!-- Breakdown Prioridade -->
+        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px;">
+          <span class="muted-text" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 12px;">Por Prioridade</span>
+          <div id="priority-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+
+        <!-- Breakdown Etiqueta -->
+        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px;">
+          <span class="muted-text" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 12px;">Por Etiqueta</span>
+          <div id="label-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 120px; overflow-y: auto;"></div>
+        </div>
       </div>
     </div>
 
-    <div class="breakdown-row" style="display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; flex-direction: row;">
-      <div class="panel" style="flex: 1; min-width: 250px; margin-bottom: 0;">
-        <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 1.1em; color: var(--text-muted);">Por Prioridade</h3>
-        <div id="priority-list" style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px;"></div>
-      </div>
-      <div class="panel" style="flex: 1; min-width: 250px; margin-bottom: 0;">
-        <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 1.1em; color: var(--text-muted);">Por Etiqueta</h3>
-        <div id="label-list" style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px;"></div>
-      </div>
-    </div>
-
-    <div class="attention-assignees-row">
-      <div class="panel panel-attention">
-        <h3>Precisam de atenção</h3>
-        <div class="table-responsive">
+    <!-- Adicionado min-width: 0 nas colunas para evitar o overflow do chart -->
+    <div class="attention-assignees-row" style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-bottom: 24px;">
+      <div class="panel panel-attention" style="display: flex; flex-direction: column; grid-column: span 2; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+          <h3 style="margin: 0;"><i class="bi bi-exclamation-triangle"></i> Precisam de Atenção</h3>
+        </div>
+        <div class="table-responsive" style="flex: 1; max-height: 300px;">
           <table id="attention-table">
             <thead>
               <tr>
@@ -164,45 +245,43 @@ Screens.today = {
                 <th>Cliente</th>
                 <th>Assunto</th>
                 <th>Agente</th>
-                <th><span data-tooltip="Nível de urgência definido">Prioridade</span></th>
+                <th>Prioridade</th>
                 <th>Canal</th>
-                <th><span data-tooltip="Tempo restante até violar a meta">SLA</span></th>
-                <th></th>
+                <th>SLA</th>
+                <th style="text-align: right;">Ação</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
       </div>
-      <div class="panel"><h3>Atribuições hoje</h3><canvas id="chart-assignees"></canvas></div>
-      <div class="panel"><h3>Resoluções hoje</h3><canvas id="chart-top-solvers"></canvas></div>
-    </div>
-
-    <div class="cards">
-      <div class="card">
-        <i class="bi bi-stopwatch card-icon"></i>
-        <span class="card-label">1ª Resposta (hoje)</span>
-        <span class="card-value" id="card-frt">-</span>
-        <span class="card-desc">Tempo médio para a primeira interação</span>
-      </div>
-      <div class="card">
-        <i class="bi bi-check2-all card-icon"></i>
-        <span class="card-label">Resolução (hoje)</span>
-        <span class="card-value" id="card-res">-</span>
-        <span class="card-desc">Tempo médio para fechamento</span>
-      </div>
-      <div class="card">
-        <i class="bi bi-shield-check card-icon"></i>
-        <span class="card-label">SLA Atingido (hoje)</span>
-        <span class="card-value" id="card-sla-met">-</span>
-        <span class="card-desc">Percentual de chamados no prazo</span>
+      
+      <div style="display: flex; flex-direction: column; gap: 24px; min-width: 0;">
+        <div class="panel" style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+          <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+            <h3 style="margin: 0;"><i class="bi bi-person-lines-fill"></i> Atribuições Hoje</h3>
+          </div>
+          <div class="canvas-container" style="flex: 1; min-height: 150px; min-width: 0;">
+            <canvas id="chart-assignees"></canvas>
+          </div>
+        </div>
+        <div class="panel" style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+          <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+            <h3 style="margin: 0;"><i class="bi bi-trophy"></i> Resoluções Hoje</h3>
+          </div>
+          <div class="canvas-container" style="flex: 1; min-height: 150px; min-width: 0;">
+            <canvas id="chart-top-solvers"></canvas>
+          </div>
+        </div>
       </div>
     </div>
 
     <div id="kpi-modal" class="modal hidden">
-      <div class="modal-content">
+      <div class="modal-content" style="max-width: 1000px;">
         <button class="modal-close" onclick="closeKpiModal()">&times;</button>
-        <h3 id="kpi-modal-title"></h3>
+        <h3 id="kpi-modal-title" style="margin-top: 0; padding-bottom: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
+          <i class="bi bi-table" style="color: var(--accent-blue);"></i> Detalhes
+        </h3>
         <div class="table-responsive" style="max-height: 65vh; margin-top: 10px;">
           <table id="kpi-modal-table"><thead></thead><tbody></tbody></table>
         </div>
@@ -237,8 +316,8 @@ Screens.today = {
       fetch('/monitor/api/today/first-response').then(r => r.ok ? r.json() : {}).catch(() => ({})),
     ]);
 
-    document.getElementById('card-frt').textContent = formatDuration(firstResponseToday.avg_first_response);
-    document.getElementById('card-res').textContent = formatDuration(kpis.avg_resolution);
+    document.getElementById('card-frt').textContent = formatDetailedDuration(firstResponseToday.avg_first_response);
+    document.getElementById('card-res').textContent = formatDetailedDuration(kpis.avg_resolution);
     document.getElementById('kpi-created-today').textContent = createdToday.length || 0;
     document.getElementById('kpi-open').textContent = open.length || 0;
     document.getElementById('kpi-unassigned').textContent = unassigned.length || 0;
@@ -246,21 +325,21 @@ Screens.today = {
 
     const renderKpiRow = (label, total, color, onClick) => {
       const div = document.createElement('div');
-      div.className = 'card kpi-clickable';
+      div.className = 'kpi-clickable';
       div.style.display = 'flex';
       div.style.flexDirection = 'row';
       div.style.justifyContent = 'space-between';
       div.style.alignItems = 'center';
       div.style.padding = '8px 12px';
-      div.style.minHeight = 'auto';
-      div.style.flex = '1 1 110px'; 
-      div.style.minWidth = '110px';
-      div.style.gap = '8px';
+      div.style.borderRadius = '8px';
+      div.style.background = 'var(--panel)';
+      div.style.border = '1px solid var(--border)';
+      div.style.cursor = 'pointer';
       div.innerHTML = `<div style="display:flex; align-items:center; gap: 8px; overflow: hidden;">
-                        <span style="width: 10px; height: 10px; border-radius: 50%; background-color: ${color}; flex-shrink: 0; box-shadow: 0 0 4px ${color}80;"></span>
-                        <span style="font-weight: 500; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${label}">${label}</span>
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0; box-shadow: 0 0 4px ${color}80;"></span>
+                        <span style="font-weight: 500; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${label}">${label}</span>
                        </div>
-                       <span style="font-size: 1.1em; font-weight: 600;">${total}</span>`;
+                       <span style="font-size: 0.95rem; font-weight: 600; background: var(--bg); padding: 2px 8px; border-radius: 12px; border: 1px solid var(--border);">${total}</span>`;
       div.onclick = onClick;
       return div;
     };
@@ -304,17 +383,47 @@ Screens.today = {
       cardSlaMet.style.color = '';
     }
 
-    const renderCompare = (elId, current, previous) => {
-      const el = document.getElementById(elId);
+    // Função Substituta para o Texto Flutuante -> Barras Comparativas Inlines
+    const renderCompareBars = (elId, current, previous, themeColor) => {
+      const badgeEl = document.getElementById(`${elId}-badge`);
+      const barsEl = document.getElementById(`${elId}-bars`);
+      
+      if (!badgeEl || !barsEl) return;
+      
       const diff = current - previous;
-      if (diff === 0) { el.textContent = '— igual à semana passada'; return; }
-      const arrow = diff > 0 ? '▲' : '▼';
-      el.textContent = `${arrow} ${Math.abs(diff)} vs semana passada`;
-      el.classList.toggle('compare-up', diff > 0);
-      el.classList.toggle('compare-down', diff < 0);
+      const maxVal = Math.max(current, previous, 1);
+      const prevPct = (previous / maxVal) * 100;
+      const currPct = (current / maxVal) * 100;
+      
+      // Monta a Etiqueta
+      if (diff === 0) {
+        badgeEl.innerHTML = `<span class="badge badge-neutral" style="font-size: 0.65rem; text-transform: uppercase;">= Igual</span>`;
+      } else {
+        const isGood = diff < 0; // Para filas (abertas/não atribuídas), redução é bom
+        const colorClass = isGood ? 'badge-green' : 'badge-red';
+        const icon = isGood ? 'bi-graph-down-arrow' : 'bi-graph-up-arrow';
+        badgeEl.innerHTML = `<span class="badge ${colorClass}" style="font-size: 0.65rem;"><i class="bi ${icon}"></i> ${Math.abs(diff)} vs Sem. Pass.</span>`;
+      }
+      
+      // Monta as Barras (Bullet Chart)
+      barsEl.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+           <span style="font-size: 0.65rem; color: var(--muted); width: 30px; text-align: right;">${previous}</span>
+           <div style="flex: 1; height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; border: 1px solid var(--border);">
+              <div style="width: ${prevPct}%; height: 100%; background: var(--muted); opacity: 0.5;"></div>
+           </div>
+         </div>
+         <div style="display: flex; align-items: center; gap: 8px;">
+           <span style="font-size: 0.65rem; color: var(--text); font-weight: bold; width: 30px; text-align: right;">${current}</span>
+           <div style="flex: 1; height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; border: 1px solid var(--border);">
+              <div style="width: ${currPct}%; height: 100%; background: ${themeColor}; box-shadow: 0 0 5px ${themeColor}80;"></div>
+           </div>
+         </div>
+      `;
     };
-    renderCompare('kpi-open-compare', open.length || 0, comparison.open_last_week ?? 0);
-    renderCompare('kpi-unassigned-compare', unassigned.length || 0, comparison.unassigned_last_week ?? 0);
+
+    renderCompareBars('kpi-open', open.length || 0, comparison.open_last_week ?? 0, 'var(--accent-yellow)');
+    renderCompareBars('kpi-unassigned', unassigned.length || 0, comparison.unassigned_last_week ?? 0, 'var(--accent-red)');
 
     document.querySelectorAll('.kpi-clickable[data-kpi]').forEach(el => {
       el.onclick = () => openKpiModal(el.dataset.kpi);
@@ -332,30 +441,37 @@ Screens.today = {
       };
     });
 
+    // Gráfico de Barras Ajustado
     renderChart('chart-hourly', {
       type: 'bar',
       data: {
         labels: fullDayData.map(r => r.hour),
         datasets: [
-          { label: 'Criadas WhatsApp', data: fullDayData.map(r => r.created_whatsapp), backgroundColor: '#34d399', stack: 'created', borderRadius: 4 },
-          { label: 'Criadas E-mail', data: fullDayData.map(r => r.created_email), backgroundColor: '#29a3ff', stack: 'created', borderRadius: 4 },
-          { label: 'Outros', data: fullDayData.map(r => r.created_other), backgroundColor: '#9296b8', stack: 'created', borderRadius: 4 },
-          { label: 'Resolvidas', data: fullDayData.map(r => r.resolved), backgroundColor: '#ffc247', borderRadius: 4 },
+          { label: 'WhatsApp', data: fullDayData.map(r => r.created_whatsapp), backgroundColor: '#34d399', stack: 'created', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
+          { label: 'E-mail', data: fullDayData.map(r => r.created_email), backgroundColor: '#29a3ff', stack: 'created', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
+          { label: 'Outros', data: fullDayData.map(r => r.created_other), backgroundColor: '#9296b8', stack: 'created', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
+          { label: 'Resolvidas', data: fullDayData.map(r => r.resolved), backgroundColor: '#ffc247', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
         ],
       },
       options: {
         maintainAspectRatio: false,
-        plugins: { title: { display: true, text: 'Conversas por hora', color: '#e8e8ea' }, legend: { labels: { color: '#e8e8ea' } } },
+        plugins: { 
+          legend: { 
+            position: 'top', 
+            align: 'end',
+            labels: { boxWidth: 10, usePointStyle: true, padding: 16, font: { size: 11 } } 
+          } 
+        },
         scales: {
-          x: { grid: { display: false }, ticks: { color: '#9599a6', maxTicksLimit: 12 } },
-          y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9599a6', stepSize: 1 } }
+          x: { grid: { display: false, drawBorder: false }, ticks: { maxTicksLimit: 12, font: { size: 10 } } },
+          y: { grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false }, ticks: { stepSize: 1, font: { size: 10 } } }
         },
       },
     });
 
     const attentionTbody = document.querySelector('#attention-table tbody');
     if (attention.length === 0) {
-      attentionTbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><i class="bi bi-emoji-smile" style="color: var(--accent-green);"></i><span>Tudo tranquilo! Nenhum chamado precisando de atenção.</span></div></td></tr>`;
+      attentionTbody.innerHTML = `<tr><td colspan="8"><div class="empty-state" style="padding: 40px 20px;"><i class="bi bi-emoji-smile" style="color: var(--accent-green); font-size: 2.5rem; margin-bottom: 12px;"></i><span style="font-size: 1.1rem; color: var(--text);">Tudo tranquilo!</span><span style="font-size: 0.9rem;">Nenhum chamado precisando de atenção.</span></div></td></tr>`;
     } else {
       const chatwootBase = settings.chatwoot_base_url || '';
       const accountId = currentUser.account_id;
@@ -364,40 +480,42 @@ Screens.today = {
         const url = `${chatwootBase}/app/accounts/${accountId}/search?q=${r.conversation_id}`;
         
         return `<tr>
-          <td>${r.conversation_id}</td>
+          <td style="font-weight: 500;">${r.conversation_id}</td>
           <td>${r.contact_name ?? '-'}</td>
           <td>${r.subject ?? '-'}</td>
           <td>${r.assignee_name ?? '-'}</td>
           <td>${todayPriorityBadge(r.priority)}</td>
           <td>${todayChannelBadge(r.channel)}</td>
           <td>${todaySlaBadge(r.minutes_remaining)}</td>
-          <td><i class="bi bi-box-arrow-up-right" style="cursor:pointer;color:var(--accent); font-size: 1.1rem;" onclick="window.open('${url}', '_blank')"></i></td>
+          <td style="text-align: right;"><button class="topbar-btn" style="padding: 4px 8px;" data-tooltip="Visualizar" onclick="window.open('${url}', '_blank')"><i class="bi bi-box-arrow-up-right" style="font-size: 0.9rem;"></i></button></td>
         </tr>`;
       }).join('');
     }
 
     renderChart('chart-assignees', {
       type: 'bar',
-      data: { labels: assignees.map(r => r.assignee_name), datasets: [{ label: 'Conversas', data: assignees.map(r => r.total), backgroundColor: '#29a3ff', borderRadius: 4 }] },
+      data: { labels: assignees.map(r => r.assignee_name), datasets: [{ label: 'Conversas', data: assignees.map(r => r.total), backgroundColor: '#29a3ff', borderRadius: { topRight: 4, bottomRight: 4, topLeft: 0, bottomLeft: 0 }, barPercentage: 0.6, categoryPercentage: 0.8 }] },
       options: {
         indexAxis: 'y',
+        maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9599a6', stepSize: 1 } },
-          y: { grid: { display: false }, ticks: { color: '#9599a6' } }
+          x: { grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false }, ticks: { stepSize: 1 } },
+          y: { grid: { display: false, drawBorder: false } }
         }
       },
     });
 
     renderChart('chart-top-solvers', {
       type: 'bar',
-      data: { labels: solvers.map(r => r.assignee_name), datasets: [{ label: 'Resolvidas', data: solvers.map(r => r.resolved_count), backgroundColor: '#34d399', borderRadius: 4 }] },
+      data: { labels: solvers.map(r => r.assignee_name), datasets: [{ label: 'Resolvidas', data: solvers.map(r => r.resolved_count), backgroundColor: '#34d399', borderRadius: { topRight: 4, bottomRight: 4, topLeft: 0, bottomLeft: 0 }, barPercentage: 0.6, categoryPercentage: 0.8 }] },
       options: {
         indexAxis: 'y',
+        maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9599a6', stepSize: 1 } },
-          y: { grid: { display: false }, ticks: { color: '#9599a6' } }
+          x: { grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false }, ticks: { stepSize: 1 } },
+          y: { grid: { display: false, drawBorder: false } }
         }
       },
     });

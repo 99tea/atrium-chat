@@ -1,10 +1,30 @@
 const AGENT_DETAIL_DAYS_OPTIONS = [7, 14, 30, 90, 180];
 
-const AGENT_DETAIL_CHANNEL_MAP = {
-  whatsapp: { label: 'WhatsApp', badge: 'badge-green', icon: 'bi-whatsapp' },
-  email: { label: 'E-mail', badge: 'badge-blue', icon: 'bi-envelope' },
-  other: { label: 'Outros', badge: 'badge-neutral', icon: 'bi-chat-dots' },
+const AGENT_DETAIL_CHANNEL_MAP = { 
+  whatsapp: { label: 'WhatsApp', badge: 'badge-green', icon: 'bi-whatsapp' }, 
+  email: { label: 'E-mail', badge: 'badge-blue', icon: 'bi-envelope' }, 
+  other: { label: 'Outros', badge: 'badge-neutral', icon: 'bi-chat-dots' } 
 };
+
+// Formatação inteligente para exibir Dias e Horas
+function formatDetailedDuration(totalMinutes) {
+  if (totalMinutes === null || totalMinutes === undefined) return '-';
+  const minutes = Math.round(totalMinutes);
+  if (minutes < 60) return `${minutes}m`;
+  
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  
+  if (hours < 24) {
+    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+  }
+  
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  
+  if (remainingHours === 0) return `${days}d`;
+  return `${days}d ${remainingHours}h`;
+}
 
 function agentDetailSlaBadge(row) {
   if (row.minutes_remaining === null || row.minutes_remaining === undefined) {
@@ -13,23 +33,23 @@ function agentDetailSlaBadge(row) {
   const late = row.minutes_remaining < 0;
   const absMinutes = Math.abs(row.minutes_remaining);
   const icon = late ? 'bi-alarm-fill' : 'bi-stopwatch-fill';
-
+  
   return `<span class="badge ${late ? 'badge-red' : 'badge-green'}" style="white-space:nowrap; display:inline-flex; align-items:center; gap:4px;">
-            <i class="bi ${icon}"></i> ${late ? 'Atrasado ' : 'Em '}${formatDuration(absMinutes)}
+            <i class="bi ${icon}"></i> ${late ? 'Atrasado ' : 'Em '}${formatDetailedDuration(absMinutes)}
           </span>`;
 }
 
 function agentDetailPriorityBadge(priority) {
-  const prioMap = {
-    urgent: { label: 'Urgente', badge: 'badge-red', icon: 'bi-exclamation-triangle-fill' },
-    high: { label: 'Alta', badge: 'badge-red', icon: 'bi-arrow-up-circle-fill' },
-    medium: { label: 'Média', badge: 'badge-yellow', icon: 'bi-dash-circle-fill' },
-    low: { label: 'Baixa', badge: 'badge-neutral', icon: 'bi-arrow-down-circle-fill' },
-    none: { label: 'Nenhuma', badge: 'badge-neutral', icon: 'bi-info-circle-fill' },
+  const prioMap = { 
+    urgent: { label: 'Urgente', badge: 'badge-red', icon: 'bi-exclamation-triangle-fill' }, 
+    high: { label: 'Alta', badge: 'badge-red', icon: 'bi-arrow-up-circle-fill' }, 
+    medium: { label: 'Média', badge: 'badge-yellow', icon: 'bi-dash-circle-fill' }, 
+    low: { label: 'Baixa', badge: 'badge-neutral', icon: 'bi-arrow-down-circle-fill' }, 
+    none: { label: 'Nenhuma', badge: 'badge-neutral', icon: 'bi-info-circle-fill' } 
   };
   const prio = String(priority || 'none').toLowerCase();
   const info = prioMap[prio] || prioMap.none;
-
+  
   return `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 8px;">
             <i class="bi ${info.icon}"></i> ${info.label}
           </span>`;
@@ -51,7 +71,7 @@ function agentDetailCompareValue(agentVal, teamVal) {
   const diffPct = teamVal ? Math.abs(((agentVal - teamVal) / teamVal) * 100).toFixed(0) : 0;
   const color = better ? 'var(--accent-green)' : 'var(--accent-red)';
   const arrow = better ? 'bi-arrow-down-short' : 'bi-arrow-up-short';
-  return `${formatDuration(agentVal)} <span style="color:${color}; font-size:0.85rem;"><i class="bi ${arrow}"></i>${diffPct}% vs time</span>`;
+  return `${formatDetailedDuration(agentVal)} <span style="color:${color}; font-size:0.85rem;"><i class="bi ${arrow}"></i>${diffPct}% vs time</span>`;
 }
 
 async function renderAgentDetailPage(agentId, days) {
@@ -64,8 +84,8 @@ async function renderAgentDetailPage(agentId, days) {
   ]);
 
   const s = detail.summary || {};
-  document.getElementById('agent-page-frt').textContent = formatDuration(s.avg_first_response);
-  document.getElementById('agent-page-res').textContent = formatDuration(s.avg_resolution);
+  document.getElementById('agent-page-frt').textContent = formatDetailedDuration(s.avg_first_response);
+  document.getElementById('agent-page-res').textContent = formatDetailedDuration(s.avg_resolution);
   document.getElementById('agent-page-resolved').textContent = s.total ?? 0;
 
   const slaEl = document.getElementById('agent-page-sla');
@@ -84,13 +104,18 @@ async function renderAgentDetailPage(agentId, days) {
 
   const teamAvg = detail.team_avg;
   const compareEl = document.getElementById('agent-page-team-compare');
+  compareEl.style.display = 'flex'; // Sempre exibe o painel de tempos
+  
   if (teamAvg && teamAvg.resolved_count > 0) {
-    compareEl.style.display = 'flex';
-    document.getElementById('agent-page-team-name').textContent = TEAM_NAMES[teamAvg.team_id] || `Time ${teamAvg.team_id}`;
+    document.getElementById('agent-page-team-name').innerHTML = `Comparativo: <span style="color: var(--text);">${TEAM_NAMES[teamAvg.team_id] || `Time ${teamAvg.team_id}`}</span>`;
+    document.getElementById('agent-page-cmp-frt').style.display = '';
     document.getElementById('agent-page-cmp-frt').innerHTML = agentDetailCompareValue(s.avg_first_response, teamAvg.avg_first_response);
+    document.getElementById('agent-page-cmp-res').style.display = '';
     document.getElementById('agent-page-cmp-res').innerHTML = agentDetailCompareValue(s.avg_resolution, teamAvg.avg_resolution);
   } else {
-    compareEl.style.display = 'none';
+    document.getElementById('agent-page-team-name').textContent = 'Tempos Médios';
+    document.getElementById('agent-page-cmp-frt').style.display = 'none';
+    document.getElementById('agent-page-cmp-res').style.display = 'none';
   }
 
   const PRIORITY_ORDER = ['urgent', 'high', 'medium', 'low', 'none'];
@@ -99,9 +124,9 @@ async function renderAgentDetailPage(agentId, days) {
   document.querySelector('#agent-page-priority-table tbody').innerHTML = orderedPriority.map(r => `
     <tr>
       <td>${agentDetailPriorityBadge(r.priority)}</td>
-      <td>${r.total}</td>
-      <td>${formatDuration(r.avg_first_response)}</td>
-      <td>${formatDuration(r.avg_resolution)}</td>
+      <td style="text-align: right;">${r.total}</td>
+      <td style="text-align: right;">${formatDetailedDuration(r.avg_first_response)}</td>
+      <td style="text-align: right;">${formatDetailedDuration(r.avg_resolution)}</td>
     </tr>
   `).join('');
 
@@ -115,26 +140,26 @@ async function renderAgentDetailPage(agentId, days) {
                 <i class="bi ${info.icon}"></i> ${info.label}
               </span>
             </td>
-            <td>${r.total}</td>
-            <td>${formatDuration(r.avg_first_response)}</td>
-            <td>${formatDuration(r.avg_resolution)}</td>
+            <td style="text-align: right;">${r.total}</td>
+            <td style="text-align: right;">${formatDetailedDuration(r.avg_first_response)}</td>
+            <td style="text-align: right;">${formatDetailedDuration(r.avg_resolution)}</td>
           </tr>`;
       }).join('')
-    : '<tr><td colspan="4"><div class="empty-state" style="padding: 15px;"><i class="bi bi-chat-dots" style="font-size: 1.5rem;"></i><span>Sem dados no período</span></div></td></tr>';
+    : '<tr><td colspan="4"><div class="empty-state" style="padding: 24px;"><i class="bi bi-chat-dots" style="font-size: 1.5rem; margin-bottom: 8px;"></i><span>Sem dados no período</span></div></td></tr>';
 
   document.querySelector('#agent-page-subject-table tbody').innerHTML = (detail.by_subject || []).length
     ? detail.by_subject.map(r => `
         <tr>
-          <td>${r.subject}</td>
-          <td>${r.total}</td>
-          <td>${formatDuration(r.avg_first_response)}</td>
-          <td>${formatDuration(r.avg_resolution)}</td>
+          <td style="font-weight: 500;">${r.subject}</td>
+          <td style="text-align: right;">${r.total}</td>
+          <td style="text-align: right;">${formatDetailedDuration(r.avg_first_response)}</td>
+          <td style="text-align: right;">${formatDetailedDuration(r.avg_resolution)}</td>
         </tr>`).join('')
-    : '<tr><td colspan="4"><div class="empty-state" style="padding: 15px;"><i class="bi bi-tag" style="font-size: 1.5rem;"></i><span>Sem dados no período</span></div></td></tr>';
+    : '<tr><td colspan="4"><div class="empty-state" style="padding: 24px;"><i class="bi bi-folder2-open" style="font-size: 1.5rem; margin-bottom: 8px;"></i><span>Sem dados no período</span></div></td></tr>';
 
   document.querySelector('#agent-page-labels-table tbody').innerHTML = (detail.open_labels || []).length
     ? detail.open_labels.map(r => `<tr><td>${agentDetailLabelBadge(r.label)}</td><td style="text-align: right;"><span class="badge badge-neutral">${r.total}</span></td></tr>`).join('')
-    : '<tr><td colspan="2"><div class="empty-state" style="padding: 15px;"><i class="bi bi-tag" style="font-size: 1.5rem;"></i><span>Nenhuma etiqueta</span></div></td></tr>';
+    : '<tr><td colspan="2"><div class="empty-state" style="padding: 24px;"><i class="bi bi-tags" style="font-size: 1.5rem; margin-bottom: 8px;"></i><span>Nenhuma etiqueta</span></div></td></tr>';
 
   const chatwootBase = settings.chatwoot_base_url || '';
   const accountId = currentUser.account_id;
@@ -162,13 +187,13 @@ async function renderAgentDetailPage(agentId, days) {
             </td>
           </tr>`;
       }).join('')
-    : '<tr><td colspan="7"><div class="empty-state"><i class="bi bi-emoji-smile" style="color: var(--accent-green); font-size: 1.8rem; margin-bottom: 8px;"></i><span>Nenhuma conversa aberta no momento</span></div></td></tr>';
+    : '<tr><td colspan="7"><div class="empty-state" style="padding: 40px 20px;"><i class="bi bi-emoji-smile" style="color: var(--accent-green); font-size: 1.8rem; margin-bottom: 8px;"></i><span>Nenhuma conversa aberta no momento</span></div></td></tr>';
 }
 
 Screens.agent = {
   template: `
     <div style="display:flex; align-items:center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
-      <div class="home-avatar" id="agent-page-avatar" style="width: 56px; height: 56px; font-size: 1.4rem; margin-bottom: 0;"></div>
+      <div class="home-avatar" id="agent-page-avatar" style="width: 56px; height: 56px; font-size: 1.4rem; margin-bottom: 0; background: var(--accent);"></div>
       <div>
         <h2 id="agent-page-title" style="margin: 0 0 4px; font-size: 1.4rem;">Detalhes do Agente</h2>
         <p class="muted-text" style="margin: 0; font-size: 0.9rem;">Visão individual de desempenho</p>
@@ -205,13 +230,13 @@ Screens.agent = {
       </div>
 
       <!-- Comparativo com o Time -->
-      <div class="panel" id="agent-page-team-compare" style="display: none; flex-direction: column; justify-content: center; position: relative; overflow: hidden;">
+      <div class="panel" id="agent-page-team-compare" style="display: none; flex-direction: column; justify-content: center; position: relative; overflow: hidden; min-width: 0;">
         <div style="position: absolute; right: -20px; top: -20px; opacity: 0.05; pointer-events: none;">
           <i class="bi bi-people-fill" style="font-size: 12rem;"></i>
         </div>
         
         <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: none; padding-bottom: 0; z-index: 1;">
-          <h3 style="margin: 0;"><i class="bi bi-diagram-3"></i> Comparativo: <span id="agent-page-team-name" style="color: var(--text);"></span></h3>
+          <h3 style="margin: 0;"><i class="bi bi-diagram-3"></i> <span id="agent-page-team-name">Tempos Médios</span></h3>
         </div>
         
         <div style="display: flex; flex-direction: column; gap: 16px; z-index: 1;">
@@ -246,37 +271,37 @@ Screens.agent = {
 
     <!-- Tabelas de Resolução -->
     <div class="grid-3-cols" style="margin-bottom: 24px;">
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <div class="home-panel-header" style="margin-bottom: 16px;">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
           <h3 style="margin: 0;"><i class="bi bi-flag"></i> Resolução por Prioridade</h3>
         </div>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
           <table class="sortable" id="agent-page-priority-table">
-            <thead><tr><th data-sort="string">Prioridade</th><th data-sort="number">Total</th><th data-sort="time" style="white-space: nowrap;">1ª Resposta</th><th data-sort="time">Resolução</th></tr></thead>
+            <thead><tr><th data-sort="string">Prioridade</th><th data-sort="number" style="text-align: right;">Total</th><th data-sort="time" style="white-space: nowrap; text-align: right;">1ª Resposta</th><th data-sort="time" style="text-align: right;">Resolução</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
       </div>
 
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <div class="home-panel-header" style="margin-bottom: 16px;">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
           <h3 style="margin: 0;"><i class="bi bi-chat-square-dots"></i> Resolução por Canal</h3>
         </div>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
           <table class="sortable" id="agent-page-channel-table">
-            <thead><tr><th data-sort="string">Canal</th><th data-sort="number">Total</th><th data-sort="time" style="white-space: nowrap;">1ª Resposta</th><th data-sort="time">Resolução</th></tr></thead>
+            <thead><tr><th data-sort="string">Canal</th><th data-sort="number" style="text-align: right;">Total</th><th data-sort="time" style="white-space: nowrap; text-align: right;">1ª Resposta</th><th data-sort="time" style="text-align: right;">Resolução</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
       </div>
 
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <div class="home-panel-header" style="margin-bottom: 16px;">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
           <h3 style="margin: 0;"><i class="bi bi-folder2-open"></i> Resolução por Assunto</h3>
         </div>
         <div class="table-responsive" style="flex: 1; max-height: 250px;">
           <table class="sortable" id="agent-page-subject-table">
-            <thead><tr><th data-sort="string">Assunto</th><th data-sort="number">Total</th><th data-sort="time" style="white-space: nowrap;">1ª Resposta</th><th data-sort="time">Resolução</th></tr></thead>
+            <thead><tr><th data-sort="string">Assunto</th><th data-sort="number" style="text-align: right;">Total</th><th data-sort="time" style="white-space: nowrap; text-align: right;">1ª Resposta</th><th data-sort="time" style="text-align: right;">Resolução</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -285,8 +310,8 @@ Screens.agent = {
 
     <!-- Conversas Abertas e Etiquetas -->
     <div class="grid-3-cols" style="grid-template-columns: 1fr 300px;">
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <div class="home-panel-header" style="margin-bottom: 16px;">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
           <h3 style="margin: 0;"><i class="bi bi-inbox"></i> Conversas Abertas</h3>
         </div>
         <div class="table-responsive" style="flex: 1; max-height: 400px;">
@@ -299,7 +324,7 @@ Screens.agent = {
                 <th data-sort="string">Cliente</th>
                 <th data-sort="string">Canal</th>
                 <th data-sort="time">SLA</th>
-                <th></th>
+                <th style="text-align: right;">Ação</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -307,8 +332,8 @@ Screens.agent = {
         </div>
       </div>
 
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <div class="home-panel-header" style="margin-bottom: 16px;">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
           <h3 style="margin: 0;"><i class="bi bi-tags"></i> Abertas por Etiqueta</h3>
         </div>
         <div class="table-responsive" style="flex: 1; max-height: 400px;">
@@ -336,12 +361,23 @@ Screens.agent = {
 
     let selectedDays = 30;
 
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.days) === selectedDays);
+    });
+
     document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         selectedDays = Number(btn.dataset.days);
+        
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        renderAgentDetailPage(agentId, selectedDays);
+        
+        const content = document.getElementById('content');
+        content.classList.add('loading');
+        
+        await renderAgentDetailPage(agentId, selectedDays);
+        
+        content.classList.remove('loading');
       });
     });
 

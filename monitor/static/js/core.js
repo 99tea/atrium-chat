@@ -132,7 +132,24 @@ async function renderRoute() {
     route = 'home';
   }
 
-  document.querySelectorAll('#nav-list li[data-route]').forEach(li => li.classList.toggle('active', li.dataset.route === route));
+  // Lógica de alternância de ícones (Outline vs Fill)
+  document.querySelectorAll('#nav-list li[data-route]').forEach(li => {
+    const isActive = li.dataset.route === route;
+    li.classList.toggle('active', isActive);
+    
+    const iconEl = li.querySelector('.nav-icon');
+    if (iconEl) {
+      if (isActive) {
+        iconEl.classList.remove(li.dataset.icon);
+        iconEl.classList.add(li.dataset.activeIcon);
+        iconEl.style.color = 'var(--accent)'; // Dá um destaque extra na cor
+      } else {
+        iconEl.classList.remove(li.dataset.activeIcon);
+        iconEl.classList.add(li.dataset.icon);
+        iconEl.style.color = ''; 
+      }
+    }
+  });
 
   const content = document.getElementById('content');
   const loader = document.getElementById('global-loader');
@@ -185,19 +202,19 @@ document.addEventListener('click', (e) => {
 
 const NAV_CONFIG = [
   { section: 'Visão Geral', items: [
-    { route: 'home', label: 'Início', icon: 'bi-house-door', adminOnly: false },
-    { route: 'today', label: 'Visão Hoje', icon: 'bi-graph-up', adminOnly: true },
-    { route: 'overview', label: 'Volume', icon: 'bi-speedometer2', adminOnly: true },
-    { route: 'sla', label: 'SLA', icon: 'bi-shield-check', adminOnly: true },
+    { route: 'home', label: 'Início', icon: 'bi-house', activeIcon: 'bi-house-fill', adminOnly: false },
+    { route: 'today', label: 'Visão Hoje', icon: 'bi-calendar2-day', activeIcon: 'bi-calendar2-day-fill', adminOnly: true },
+    { route: 'overview', label: 'Volume', icon: 'bi-grid-1x2', activeIcon: 'bi-grid-1x2-fill', adminOnly: true },
+    { route: 'sla', label: 'SLA', icon: 'bi-shield-check', activeIcon: 'bi-shield-fill-check', adminOnly: true },
   ]},
   { section: 'Operacional', items: [
-    { route: 'agents', label: 'Agentes', icon: 'bi-people', adminOnly: true },
-    { route: 'conversations', label: 'Conversas', icon: 'bi-chat-dots', adminOnly: false },
-    { route: 'clients', label: 'Clientes', icon: 'bi-building', adminOnly: true },
+    { route: 'agents', label: 'Agentes', icon: 'bi-people', activeIcon: 'bi-people-fill', adminOnly: true },
+    { route: 'conversations', label: 'Conversas', icon: 'bi-chat-text', activeIcon: 'bi-chat-text-fill', adminOnly: false },
+    { route: 'clients', label: 'Clientes', icon: 'bi-buildings', activeIcon: 'bi-buildings-fill', adminOnly: true },
   ]},
   { section: 'Administração', items: [
-    { route: 'me', label: 'Meus Dados', icon: 'bi-person-circle', adminOnly: false },
-    { route: 'settings', label: 'Configurações', icon: 'bi-gear', adminOnly: true },
+    { route: 'me', label: 'Meus Dados', icon: 'bi-person-badge', activeIcon: 'bi-person-badge-fill', adminOnly: false },
+    { route: 'settings', label: 'Configurações', icon: 'bi-gear', activeIcon: 'bi-gear-fill', adminOnly: true },
   ]}
 ];
 
@@ -210,8 +227,8 @@ function renderNav() {
     html += `<li class="nav-section-title">${group.section}</li>`;
     visibleItems.forEach(item => {
       html += `
-        <li data-route="${item.route}" class="${item.adminOnly ? 'admin-only' : ''}" data-tooltip="${item.label}">
-          <i class="bi ${item.icon}"></i>
+        <li data-route="${item.route}" class="${item.adminOnly ? 'admin-only' : ''}" data-tooltip="${item.label}" data-icon="${item.icon}" data-active-icon="${item.activeIcon}">
+          <i class="bi ${item.icon} nav-icon"></i>
           <span class="nav-label">${item.label}</span>
         </li>
       `;

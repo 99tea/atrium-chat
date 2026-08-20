@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Request, Depends
 from auth import require_admin
-from monitor_core import _validate_days, get_inbox_channel_map, resolve_channel
+from monitor_core import _validate_days_extended, get_inbox_channel_map, resolve_channel
 
 router = APIRouter()
 
 
 @router.get("/monitor/api/overview")
 async def overview(request: Request, days: int = 30, user=Depends(require_admin)):
-    days = _validate_days(days)
+    days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -29,7 +29,7 @@ async def overview(request: Request, days: int = 30, user=Depends(require_admin)
 
 @router.get("/monitor/api/overview/daily")
 async def overview_daily(request: Request, days: int = 30, user=Depends(require_admin)):
-    days = _validate_days(days)
+    days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
@@ -60,7 +60,7 @@ async def overview_daily(request: Request, days: int = 30, user=Depends(require_
 
 @router.get("/monitor/api/overview/hourly")
 async def overview_hourly(request: Request, days: int = 30, user=Depends(require_admin)):
-    days = _validate_days(days)
+    days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -78,7 +78,7 @@ async def overview_hourly(request: Request, days: int = 30, user=Depends(require
 
 @router.get("/monitor/api/overview/weekday")
 async def overview_weekday(request: Request, days: int = 30, user=Depends(require_admin)):
-    days = _validate_days(days)
+    days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -96,7 +96,7 @@ async def overview_weekday(request: Request, days: int = 30, user=Depends(requir
 
 @router.get("/monitor/api/overview/priority-distribution")
 async def overview_priority_distribution(request: Request, days: int = 30, user=Depends(require_admin)):
-    days = _validate_days(days)
+    days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -114,7 +114,7 @@ async def overview_priority_distribution(request: Request, days: int = 30, user=
 
 @router.get("/monitor/api/overview/channel-distribution")
 async def overview_channel_distribution(request: Request, days: int = 30, user=Depends(require_admin)):
-    days = _validate_days(days)
+    days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
@@ -137,7 +137,7 @@ async def overview_channel_distribution(request: Request, days: int = 30, user=D
 
 @router.get("/monitor/api/overview/company-distribution")
 async def overview_company_distribution(request: Request, days: int = 30, user=Depends(require_admin)):
-    days = _validate_days(days)
+    days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -159,7 +159,7 @@ async def overview_company_distribution(request: Request, days: int = 30, user=D
 
 @router.get("/monitor/api/overview/reopen-rate")
 async def overview_reopen_rate(request: Request, days: int = 30, user=Depends(require_admin)):
-    days = _validate_days(days)
+    days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         row = await conn.fetchrow(

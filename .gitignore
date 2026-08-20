@@ -15,3 +15,9 @@ backup/.env
 backup/local/
 backup/logs/
 backup/restore_test/
+
+00_cleanup_full.sql
+01_pilot_seed.sql
+02_pilot_cleanup.sql
+02_seed.sql
+03_seed_fix.sql

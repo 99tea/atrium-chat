@@ -1,3 +1,5 @@
+const SLA_DAYS_OPTIONS = [7, 14, 30, 90, 180];
+
 const SLA_CHANNEL_MAP = { 
   whatsapp: { label: 'WhatsApp', badge: 'badge-green', icon: 'bi-whatsapp' }, 
   email: { label: 'E-mail', badge: 'badge-blue', icon: 'bi-envelope' }, 
@@ -12,12 +14,30 @@ const SLA_PRIORITY_MAP = {
   none: { label: 'Nenhuma', badge: 'badge-neutral', icon: 'bi-info-circle-fill', order: 5 } 
 };
 
+// Formatação inteligente para exibir Dias e Horas
+function formatDetailedDuration(totalMinutes) {
+  if (totalMinutes === null || totalMinutes === undefined) return '-';
+  const minutes = Math.round(totalMinutes);
+  if (minutes < 60) return `${minutes}m`;
+  
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  
+  if (hours < 24) {
+    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+  }
+  
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  
+  if (remainingHours === 0) return `${days}d`;
+  return `${days}d ${remainingHours}h`;
+}
+
+// Layout mais limpo e condensado para as barras de progresso
 function buildSlaRow(labelHtml, data, targetSla) {
   if (data.resolution_breach_rate == null) {
-    return `<tr>
-              <td style="font-weight: 500; white-space: nowrap;">${labelHtml}</td>
-              <td colspan="5"><div class="empty-state" style="padding: 4px;"><span style="font-size: 0.8rem;">Sem dados</span></div></td>
-            </tr>`;
+    return `<tr><td colspan="3"><div class="empty-state" style="padding: 16px;"><i class="bi bi-inbox" style="font-size: 1.5rem;"></i><span>Sem dados</span></div></td></tr>`;
   }
 
   const attained = (1 - data.resolution_breach_rate) * 100;
@@ -26,16 +46,27 @@ function buildSlaRow(labelHtml, data, targetSla) {
   
   return `
     <tr>
-      <td style="font-weight: 500; white-space: nowrap;">${labelHtml}</td>
-      <td>${data.total || 0}</td>
-      <td style="white-space: nowrap;">${formatDuration(data.avg_first_response)}</td>
-      <td style="white-space: nowrap;">${formatDuration(data.avg_resolution)}</td>
-      <td style="min-width: 80px; vertical-align: middle;">
-        <div style="width: 100%; background: var(--bg); border-radius: 4px; height: 8px; overflow: hidden; border: 1px solid var(--border);">
-          <div style="width: ${attained}%; background: ${barColor}; height: 100%; border-radius: 4px; transition: width 1s ease-in-out;"></div>
+      <td style="width: 35%; vertical-align: middle;">
+        <div style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;">
+          ${labelHtml}
+        </div>
+        <div class="muted-text" style="font-size: 0.75rem; margin-top: 6px; font-weight: 600;">VOL: ${data.total || 0}</div>
+      </td>
+      <td style="width: 25%; vertical-align: middle;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 0.8rem; display: flex; align-items: center; gap: 6px;"><i class="bi bi-stopwatch muted-text" style="font-size: 0.9rem;"></i> <span style="font-weight: 500;">${formatDetailedDuration(data.avg_first_response)}</span></span>
+          <span style="font-size: 0.8rem; display: flex; align-items: center; gap: 6px;"><i class="bi bi-check2-all muted-text" style="font-size: 0.9rem;"></i> <span style="font-weight: 500;">${formatDetailedDuration(data.avg_resolution)}</span></span>
         </div>
       </td>
-      <td style="text-align: right; font-weight: 600; color: ${barColor};">${attained.toFixed(1)}%</td>
+      <td style="width: 40%; vertical-align: middle; padding-right: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.75rem;">
+          <span style="font-weight: 600; color: var(--muted);">Meta: ${targetSla}%</span>
+          <span style="color: ${barColor}; font-weight: 700; font-size: 0.85rem;">${attained.toFixed(1)}%</span>
+        </div>
+        <div style="width: 100%; background: var(--bg); border-radius: 3px; height: 6px; overflow: hidden; border: 1px solid var(--border);">
+          <div style="width: ${attained}%; background: ${barColor}; height: 100%; border-radius: 3px; transition: width 1s ease-in-out; box-shadow: 0 0 4px ${barColor}80;"></div>
+        </div>
+      </td>
     </tr>
   `;
 }
@@ -51,8 +82,8 @@ async function renderSlaData(days) {
     fetch('/monitor/api/settings').then(r => r.ok ? r.json() : {}).catch(() => ({}))
   ]);
 
-  document.getElementById('sla-frt').textContent = formatDuration(summary.avg_first_response);
-  document.getElementById('sla-res').textContent = formatDuration(summary.avg_resolution);
+  document.getElementById('sla-frt').textContent = formatDetailedDuration(summary.avg_first_response);
+  document.getElementById('sla-res').textContent = formatDetailedDuration(summary.avg_resolution);
 
   const target = settings.sla_target_percent || 95;
   const attained = summary.resolution_breach_rate != null ? ((1 - summary.resolution_breach_rate) * 100).toFixed(1) : null;
@@ -69,9 +100,9 @@ async function renderSlaData(days) {
   const totalInSla = summary.total && attained !== null ? Math.round(summary.total * (attained / 100)) : 0;
   document.getElementById('sla-total').textContent = `${totalInSla} / ${summary.total || 0}`;
 
-  const emptyRow = '<tr><td colspan="6"><div class="empty-state"><i class="bi bi-inbox"></i><span>Sem dados</span></div></td></tr>';
+  const emptyRow = '<tr><td colspan="3"><div class="empty-state" style="padding: 24px;"><i class="bi bi-inbox" style="font-size: 1.8rem; margin-bottom: 8px;"></i><span>Sem dados no período</span></div></td></tr>';
 
-  // Prioridade (Ordenada pelo mapa)
+  // Prioridade
   const sortedPriority = [...byPriority].sort((a, b) => {
     const oa = (SLA_PRIORITY_MAP[String(a.priority).toLowerCase()] || SLA_PRIORITY_MAP.none).order;
     const ob = (SLA_PRIORITY_MAP[String(b.priority).toLowerCase()] || SLA_PRIORITY_MAP.none).order;
@@ -92,72 +123,76 @@ async function renderSlaData(days) {
 
   // Assunto
   document.getElementById('tb-sla-subject').innerHTML = bySubject.length ? bySubject.sort((a, b) => b.total - a.total).map(s => 
-    buildSlaRow(s.subject || 'Não categorizado', s, target)
+    buildSlaRow(`<span style="color: var(--text);">${s.subject || 'Não categorizado'}</span>`, s, target)
   ).join('') : emptyRow;
 
   // Time
   document.getElementById('tb-sla-team').innerHTML = byTeam.length ? byTeam.sort((a, b) => b.total - a.total).map(t => 
-    buildSlaRow(t.team_name, t, target)
+    buildSlaRow(`<span style="color: var(--text);"><i class="bi bi-people" style="margin-right: 6px; color: var(--muted);"></i>${t.team_name}</span>`, t, target)
   ).join('') : emptyRow;
 
   // Clientes (Piores)
   document.getElementById('tb-sla-client-worst').innerHTML = (byClient.worst || []).length ? byClient.worst.map(c => 
-    buildSlaRow(c.client_name, c, target)
+    buildSlaRow(`<span style="color: var(--text);"><i class="bi bi-building" style="margin-right: 6px; color: var(--muted);"></i>${c.client_name}</span>`, c, target)
   ).join('') : emptyRow;
 
   // Clientes (Melhores)
   document.getElementById('tb-sla-client-best').innerHTML = (byClient.best || []).length ? byClient.best.map(c => 
-    buildSlaRow(c.client_name, c, target)
+    buildSlaRow(`<span style="color: var(--text);"><i class="bi bi-building" style="margin-right: 6px; color: var(--muted);"></i>${c.client_name}</span>`, c, target)
   ).join('') : emptyRow;
 }
 
 Screens.sla = {
   template: `
-    <h2>Visão SLA</h2>
-    <div class="filter-bar" style="margin-bottom: 20px;">
-      <button class="filter-btn" data-days="7">7D</button>
-      <button class="filter-btn" data-days="14">14D</button>
-      <button class="filter-btn active" data-days="30">30D</button>
-      <button class="filter-btn" data-days="90">90D</button>
-      <button class="filter-btn" data-days="180">180D</button>
+    <div style="display:flex; align-items:center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
+      <div class="home-avatar" style="width: 56px; height: 56px; font-size: 1.4rem; margin-bottom: 0; background: var(--accent-yellow);">
+        <i class="bi bi-shield-check"></i>
+      </div>
+      <div>
+        <h2 style="margin: 0 0 4px; font-size: 1.4rem;">Visão SLA</h2>
+        <p class="muted-text" style="margin: 0; font-size: 0.9rem;">Análise de conformidade e tempos de resposta</p>
+      </div>
     </div>
 
-    <div class="cards" style="margin-bottom: 24px;">
-      <div class="card">
-        <i class="bi bi-stopwatch card-icon"></i>
+    <div class="filter-bar" style="margin-bottom: 24px;">
+      ${SLA_DAYS_OPTIONS.map(d => `<button class="filter-btn${d === 30 ? ' active' : ''}" data-days="${d}">${d}D</button>`).join('')}
+    </div>
+
+    <div class="cards" style="margin-bottom: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+      <div class="card" style="padding: 20px;">
+        <i class="bi bi-stopwatch card-icon" style="color: var(--accent-blue);"></i>
         <span class="card-label">1ª Resposta (Média)</span>
         <span class="card-value" id="sla-frt">-</span>
       </div>
-      <div class="card">
-        <i class="bi bi-check2-all card-icon"></i>
+      <div class="card" style="padding: 20px;">
+        <i class="bi bi-check2-all card-icon" style="color: var(--accent-green);"></i>
         <span class="card-label">Resolução (Média)</span>
         <span class="card-value" id="sla-res">-</span>
       </div>
-      <div class="card">
-        <i class="bi bi-shield-check card-icon"></i>
+      <div class="card" style="padding: 20px; border-color: rgba(255,194,71,0.3); background: linear-gradient(135deg, rgba(255,194,71,0.05), var(--panel) 60%);">
+        <i class="bi bi-shield-check card-icon" style="color: var(--accent-yellow);"></i>
         <span class="card-label">% SLA Atingido vs Meta</span>
         <span class="card-value" id="sla-attained" style="white-space: nowrap;">-</span>
       </div>
-      <div class="card">
-        <i class="bi bi-envelope-check card-icon"></i>
+      <div class="card" style="padding: 20px;">
+        <i class="bi bi-envelope-check card-icon" style="color: var(--muted);"></i>
         <span class="card-label">Conversas no SLA / Total</span>
         <span class="card-value" id="sla-total">-</span>
       </div>
     </div>
 
-    <div class="grid-2-cols">
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>SLA por Prioridade</h3>
-        <div class="table-responsive" style="flex: 1;">
-          <table class="sortable">
+    <div class="grid-2-cols" style="margin-bottom: 24px;">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+          <h3 style="margin: 0;"><i class="bi bi-flag"></i> SLA por Prioridade</h3>
+        </div>
+        <div class="table-responsive" style="flex: 1; max-height: 400px;">
+          <table id="table-sla-priority">
             <thead>
               <tr>
-                <th data-sort="string">Prioridade</th>
-                <th data-sort="number">Total</th>
-                <th data-sort="time">1ª Resp.</th>
-                <th data-sort="time">Resolução</th>
-                <th style="width: 100%;">Progresso</th>
-                <th data-sort="number">%</th>
+                <th>Prioridade / Vol.</th>
+                <th>Tempos Médios</th>
+                <th style="width: 100%;">Atingimento</th>
               </tr>
             </thead>
             <tbody id="tb-sla-priority"></tbody>
@@ -165,18 +200,17 @@ Screens.sla = {
         </div>
       </div>
       
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>SLA por Canal</h3>
-        <div class="table-responsive" style="flex: 1;">
-          <table class="sortable">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+          <h3 style="margin: 0;"><i class="bi bi-chat-square-dots"></i> SLA por Canal</h3>
+        </div>
+        <div class="table-responsive" style="flex: 1; max-height: 400px;">
+          <table id="table-sla-channel">
             <thead>
               <tr>
-                <th data-sort="string">Canal</th>
-                <th data-sort="number">Total</th>
-                <th data-sort="time">1ª Resp.</th>
-                <th data-sort="time">Resolução</th>
-                <th style="width: 100%;">Progresso</th>
-                <th data-sort="number">%</th>
+                <th>Canal / Vol.</th>
+                <th>Tempos Médios</th>
+                <th style="width: 100%;">Atingimento</th>
               </tr>
             </thead>
             <tbody id="tb-sla-channel"></tbody>
@@ -185,19 +219,18 @@ Screens.sla = {
       </div>
     </div>
 
-    <div class="grid-2-cols">
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>SLA por Assunto</h3>
-        <div class="table-responsive" style="flex: 1;">
-          <table class="sortable">
+    <div class="grid-2-cols" style="margin-bottom: 24px;">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+          <h3 style="margin: 0;"><i class="bi bi-folder-fill"></i> SLA por Assunto</h3>
+        </div>
+        <div class="table-responsive" style="flex: 1; max-height: 400px;">
+          <table id="table-sla-subject">
             <thead>
               <tr>
-                <th data-sort="string">Assunto</th>
-                <th data-sort="number">Total</th>
-                <th data-sort="time">1ª Resp.</th>
-                <th data-sort="time">Resolução</th>
-                <th style="width: 100%;">Progresso</th>
-                <th data-sort="number">%</th>
+                <th>Assunto / Vol.</th>
+                <th>Tempos Médios</th>
+                <th style="width: 100%;">Atingimento</th>
               </tr>
             </thead>
             <tbody id="tb-sla-subject"></tbody>
@@ -205,18 +238,17 @@ Screens.sla = {
         </div>
       </div>
 
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>SLA por Departamento</h3>
-        <div class="table-responsive" style="flex: 1;">
-          <table class="sortable">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+          <h3 style="margin: 0;"><i class="bi bi-diagram-3"></i> SLA por Departamento</h3>
+        </div>
+        <div class="table-responsive" style="flex: 1; max-height: 400px;">
+          <table id="table-sla-team">
             <thead>
               <tr>
-                <th data-sort="string">Time</th>
-                <th data-sort="number">Total</th>
-                <th data-sort="time">1ª Resp.</th>
-                <th data-sort="time">Resolução</th>
-                <th style="width: 100%;">Progresso</th>
-                <th data-sort="number">%</th>
+                <th>Departamento / Vol.</th>
+                <th>Tempos Médios</th>
+                <th style="width: 100%;">Atingimento</th>
               </tr>
             </thead>
             <tbody id="tb-sla-team"></tbody>
@@ -225,19 +257,18 @@ Screens.sla = {
       </div>
     </div>
 
-    <div class="grid-2-cols">
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Clientes (Maiores Ofensores)</h3>
-        <div class="table-responsive" style="flex: 1;">
-          <table class="sortable">
+    <div class="grid-2-cols" style="margin-bottom: 24px;">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+          <h3 style="margin: 0;"><i class="bi bi-shield-exclamation"></i> Clientes (Maiores Ofensores)</h3>
+        </div>
+        <div class="table-responsive" style="flex: 1; max-height: 400px;">
+          <table id="table-sla-client-worst">
             <thead>
               <tr>
-                <th data-sort="string">Cliente</th>
-                <th data-sort="number">Total</th>
-                <th data-sort="time">1ª Resp.</th>
-                <th data-sort="time">Resolução</th>
-                <th style="width: 100%;">Progresso</th>
-                <th data-sort="number">%</th>
+                <th>Cliente / Vol.</th>
+                <th>Tempos Médios</th>
+                <th style="width: 100%;">Atingimento</th>
               </tr>
             </thead>
             <tbody id="tb-sla-client-worst"></tbody>
@@ -245,18 +276,17 @@ Screens.sla = {
         </div>
       </div>
 
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <h3>Clientes (Melhores SLAs)</h3>
-        <div class="table-responsive" style="flex: 1;">
-          <table class="sortable">
+      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
+          <h3 style="margin: 0;"><i class="bi bi-shield-check"></i> Clientes (Melhores SLAs)</h3>
+        </div>
+        <div class="table-responsive" style="flex: 1; max-height: 400px;">
+          <table id="table-sla-client-best">
             <thead>
               <tr>
-                <th data-sort="string">Cliente</th>
-                <th data-sort="number">Total</th>
-                <th data-sort="time">1ª Resp.</th>
-                <th data-sort="time">Resolução</th>
-                <th style="width: 100%;">Progresso</th>
-                <th data-sort="number">%</th>
+                <th>Cliente / Vol.</th>
+                <th>Tempos Médios</th>
+                <th style="width: 100%;">Atingimento</th>
               </tr>
             </thead>
             <tbody id="tb-sla-client-best"></tbody>
