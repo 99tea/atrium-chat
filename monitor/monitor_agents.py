@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
 from datetime import datetime, timezone
-from auth import get_current_user, require_admin
+from auth import get_current_user, require_admin, get_account_id
 from monitor_core import _validate_days, _validate_days_extended, get_inbox_channel_map, resolve_channel
 import httpx
 import os
@@ -11,24 +11,26 @@ CHATWOOT_URL = os.environ["CHATWOOT_URL"]
 
 
 @router.get("/monitor/api/agents")
-async def agents(request: Request, user=Depends(require_admin)):
+async def agents(request: Request, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         resolved = await conn.fetch(
             """
             SELECT assignee_id, count(*) AS resolved_count
             FROM monitor.v_resolutions_by_agent
-            WHERE resolved_at >= now() - interval '30 days'
+            WHERE account_id = $1 AND resolved_at >= now() - interval '30 days'
             GROUP BY assignee_id
-            """
+            """,
+            account_id,
         )
         current = await conn.fetch(
             """
             SELECT assignee_id, status, count(*) AS total
             FROM monitor.conversation_snapshot
-            WHERE status IN ('open', 'pending')
+            WHERE account_id = $1 AND status IN ('open', 'pending')
             GROUP BY assignee_id, status
-            """
+            """,
+            account_id,
         )
     return {"resolved_last_30d": [dict(r) for r in resolved], "current_load": [dict(r) for r in current]}
 
@@ -48,7 +50,7 @@ async def agents_status(request: Request, user=Depends(get_current_user)):
 
 
 @router.get("/monitor/api/agents/summary")
-async def agents_summary(request: Request, days: int = 30, user=Depends(require_admin)):
+async def agents_summary(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -56,20 +58,22 @@ async def agents_summary(request: Request, days: int = 30, user=Depends(require_
             """
             SELECT assignee_id, assignee_name, count(*) AS open_count
             FROM monitor.conversation_snapshot
-            WHERE status IN ('open', 'pending') AND assignee_id IS NOT NULL
+            WHERE account_id = $1 AND status IN ('open', 'pending') AND assignee_id IS NOT NULL
             GROUP BY assignee_id, assignee_name
-            """
+            """,
+            account_id,
         )
         resolved_rows = await conn.fetch(
             """
             SELECT s.assignee_id, s.assignee_name, count(*) AS resolved_count
             FROM monitor.v_resolutions_by_agent v
             JOIN monitor.conversation_snapshot s ON s.conversation_id = v.conversation_id
-            WHERE v.resolved_at >= now() - make_interval(days => $1)
+            WHERE v.account_id = $2
+              AND v.resolved_at >= now() - make_interval(days => $1)
               AND s.assignee_id IS NOT NULL
             GROUP BY s.assignee_id, s.assignee_name
             """,
-            days,
+            days, account_id,
         )
 
     summary = {}
@@ -84,7 +88,7 @@ async def agents_summary(request: Request, days: int = 30, user=Depends(require_
 
 
 @router.get("/monitor/api/teams/distribution")
-async def teams_distribution(request: Request, days: int = 30, user=Depends(require_admin)):
+async def teams_distribution(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -94,21 +98,22 @@ async def teams_distribution(request: Request, days: int = 30, user=Depends(requ
             FROM monitor.conversation_events e
             JOIN monitor.conversation_snapshot s ON s.conversation_id = e.conversation_id
             WHERE e.event_type = 'created'
+              AND e.account_id = $2
               AND e.occurred_at >= now() - make_interval(days => $1)
               AND s.team_id IS NOT NULL
             GROUP BY s.team_id
             """,
-            days,
+            days, account_id,
         )
         resolved_rows = await conn.fetch(
             """
             SELECT s.team_id, count(*) AS resolved_count
             FROM monitor.v_resolutions_by_agent v
             JOIN monitor.conversation_snapshot s ON s.conversation_id = v.conversation_id
-            WHERE v.resolved_at >= now() - make_interval(days => $1) AND s.team_id IS NOT NULL
+            WHERE v.account_id = $2 AND v.resolved_at >= now() - make_interval(days => $1) AND s.team_id IS NOT NULL
             GROUP BY s.team_id
             """,
-            days,
+            days, account_id,
         )
     result = {}
     for r in created_rows:
@@ -121,7 +126,7 @@ async def teams_distribution(request: Request, days: int = 30, user=Depends(requ
 
 
 @router.get("/monitor/api/agents/{agent_id}/detail")
-async def agent_detail_full(agent_id: int, request: Request, days: int = 30, user=Depends(get_current_user)):
+async def agent_detail_full(agent_id: int, request: Request, days: int = 30, user=Depends(get_current_user), account_id: int = Depends(get_account_id)):
     if user["role"] != "administrator" and user["id"] != agent_id:
         raise HTTPException(403, "forbidden")
     days = _validate_days_extended(days)
@@ -135,9 +140,9 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
                 sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot s ON s.conversation_id = v.conversation_id
-            WHERE s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
+            WHERE v.account_id = $3 AND s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
             """,
-            agent_id, days,
+            agent_id, days, account_id,
         )
 
         response_time_row = await conn.fetchrow(
@@ -147,7 +152,7 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
                     LAG(to_value) OVER (PARTITION BY conversation_id ORDER BY occurred_at) AS prev_value,
                     LAG(occurred_at) OVER (PARTITION BY conversation_id ORDER BY occurred_at) AS prev_time
                 FROM monitor.conversation_events
-                WHERE event_type = 'message' AND is_private = false
+                WHERE event_type = 'message' AND is_private = false AND account_id = $3
                     AND occurred_at >= now() - make_interval(days => $2)
             )
             SELECT avg(EXTRACT(EPOCH FROM (o.occurred_at - o.prev_time)) / 60) AS avg_response_time
@@ -155,7 +160,7 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
             JOIN monitor.conversation_snapshot s ON s.conversation_id = o.conversation_id
             WHERE o.to_value = 'outgoing' AND o.prev_value = 'incoming' AND s.assignee_id = $1
             """,
-            agent_id, days,
+            agent_id, days, account_id,
         )
 
         primary_team = await conn.fetchval(
@@ -163,13 +168,13 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
             SELECT s.team_id
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot s ON s.conversation_id = v.conversation_id
-            WHERE s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
+            WHERE v.account_id = $3 AND s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
                 AND s.team_id IS NOT NULL
             GROUP BY s.team_id
             ORDER BY count(*) DESC
             LIMIT 1
             """,
-            agent_id, days,
+            agent_id, days, account_id,
         )
 
         team_avg = None
@@ -181,9 +186,9 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
                     count(*) AS resolved_count
                 FROM monitor.v_sla v
                 JOIN monitor.conversation_snapshot s ON s.conversation_id = v.conversation_id
-                WHERE s.team_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
+                WHERE v.account_id = $3 AND s.team_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
                 """,
-                primary_team, days,
+                primary_team, days, account_id,
             )
             team_response_time_row = await conn.fetchrow(
                 """
@@ -192,7 +197,7 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
                         LAG(to_value) OVER (PARTITION BY conversation_id ORDER BY occurred_at) AS prev_value,
                         LAG(occurred_at) OVER (PARTITION BY conversation_id ORDER BY occurred_at) AS prev_time
                     FROM monitor.conversation_events
-                    WHERE event_type = 'message' AND is_private = false
+                    WHERE event_type = 'message' AND is_private = false AND account_id = $3
                         AND occurred_at >= now() - make_interval(days => $2)
                 )
                 SELECT avg(EXTRACT(EPOCH FROM (o.occurred_at - o.prev_time)) / 60) AS avg_response_time
@@ -200,7 +205,7 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
                 JOIN monitor.conversation_snapshot s ON s.conversation_id = o.conversation_id
                 WHERE o.to_value = 'outgoing' AND o.prev_value = 'incoming' AND s.team_id = $1
                 """,
-                primary_team, days,
+                primary_team, days, account_id,
             )
             team_avg = {
                 "team_id": primary_team,
@@ -218,10 +223,10 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
                 count(*) AS total
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot s ON s.conversation_id = v.conversation_id
-            WHERE s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
+            WHERE v.account_id = $3 AND s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
             GROUP BY priority
             """,
-            agent_id, days,
+            agent_id, days, account_id,
         )
         by_subject_raw = await conn.fetch(
             """
@@ -231,21 +236,21 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
                 count(*) AS total
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot s ON s.conversation_id = v.conversation_id
-            WHERE s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
+            WHERE v.account_id = $3 AND s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
             GROUP BY subject
             ORDER BY total DESC
             """,
-            agent_id, days,
+            agent_id, days, account_id,
         )
         open_labels = await conn.fetch(
             """
             SELECT label, count(*) AS total
             FROM monitor.conversation_snapshot cs
             LEFT JOIN LATERAL unnest(COALESCE(cs.labels, '{}')) AS label ON true
-            WHERE cs.assignee_id = $1 AND cs.status IN ('open', 'pending') AND label IS NOT NULL
+            WHERE cs.account_id = $2 AND cs.assignee_id = $1 AND cs.status IN ('open', 'pending') AND label IS NOT NULL
             GROUP BY label ORDER BY total DESC
             """,
-            agent_id,
+            agent_id, account_id,
         )
         by_channel_raw = await conn.fetch(
             """
@@ -255,12 +260,12 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
                 count(*) AS total
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot s ON s.conversation_id = v.conversation_id
-            WHERE s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
+            WHERE v.account_id = $3 AND s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
             GROUP BY s.inbox_id
             """,
-            agent_id, days,
+            agent_id, days, account_id,
         )
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
+        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
 
     by_channel = {}
     for r in by_channel_raw:
@@ -291,7 +296,7 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
 
 
 @router.get("/monitor/api/agents/reopen-rate")
-async def agents_reopen_rate(request: Request, days: int = 30, user=Depends(require_admin)):
+async def agents_reopen_rate(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -303,18 +308,19 @@ async def agents_reopen_rate(request: Request, days: int = 30, user=Depends(requ
             WHERE e.event_type = 'status_changed'
               AND e.from_value = 'resolved'
               AND e.to_value IN ('open', 'pending')
+              AND e.account_id = $2
               AND e.occurred_at >= now() - make_interval(days => $1)
               AND s.assignee_id IS NOT NULL
             GROUP BY s.assignee_id, s.assignee_name
             ORDER BY reopened DESC
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/agents/sla-ranking")
-async def agents_sla_ranking(request: Request, days: int = 30, user=Depends(require_admin)):
+async def agents_sla_ranking(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -326,10 +332,10 @@ async def agents_sla_ranking(request: Request, days: int = 30, user=Depends(requ
                 sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot s ON s.conversation_id = v.conversation_id
-            WHERE v.last_resolved_at >= now() - make_interval(days => $1) AND s.assignee_id IS NOT NULL
+            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1) AND s.assignee_id IS NOT NULL
             GROUP BY s.assignee_id, s.assignee_name
             """,
-            days,
+            days, account_id,
         )
     return [
         {
@@ -344,7 +350,7 @@ async def agents_sla_ranking(request: Request, days: int = 30, user=Depends(requ
 
 
 @router.get("/monitor/api/agents/awaiting-count")
-async def agents_awaiting_count(request: Request, user=Depends(require_admin)):
+async def agents_awaiting_count(request: Request, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -355,24 +361,25 @@ async def agents_awaiting_count(request: Request, user=Depends(require_admin)):
                 SELECT to_value, occurred_at
                 FROM monitor.conversation_events
                 WHERE conversation_id = cs.conversation_id
-                  AND event_type = 'message' AND is_private = false
+                  AND event_type = 'message' AND is_private = false AND account_id = $1
                 ORDER BY occurred_at DESC
                 LIMIT 1
             ) lm ON true
-            WHERE cs.status IN ('open', 'pending') AND lm.to_value = 'incoming' AND cs.assignee_id IS NOT NULL
+            WHERE cs.account_id = $1 AND cs.status IN ('open', 'pending') AND lm.to_value = 'incoming' AND cs.assignee_id IS NOT NULL
             GROUP BY cs.assignee_id
-            """
+            """,
+            account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/agents/{agent_id}/open-conversations")
-async def agent_open_conversations(agent_id: int, request: Request, user=Depends(get_current_user)):
+async def agent_open_conversations(agent_id: int, request: Request, user=Depends(get_current_user), account_id: int = Depends(get_account_id)):
     if user["role"] != "administrator" and user["id"] != agent_id:
         raise HTTPException(403, "forbidden")
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
+        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT cs.conversation_id, cs.inbox_id, cs.status, cs.priority, cs.subject,
@@ -384,11 +391,11 @@ async def agent_open_conversations(agent_id: int, request: Request, user=Depends
                 END AS sla_deadline
             FROM monitor.conversation_snapshot cs
             LEFT JOIN monitor.v_conversation_lifecycle l ON l.conversation_id = cs.conversation_id
-            LEFT JOIN monitor.sla_priority_targets pt ON pt.priority = COALESCE(cs.priority, 'none')
-            WHERE cs.assignee_id = $1 AND cs.status IN ('open', 'pending')
+            LEFT JOIN monitor.sla_priority_targets pt ON pt.priority = COALESCE(cs.priority, 'none') AND pt.account_id = cs.account_id
+            WHERE cs.account_id = $2 AND cs.assignee_id = $1 AND cs.status IN ('open', 'pending')
             ORDER BY sla_deadline ASC NULLS LAST
             """,
-            agent_id,
+            agent_id, account_id,
         )
     items = []
     for r in rows:
@@ -403,7 +410,7 @@ async def agent_open_conversations(agent_id: int, request: Request, user=Depends
 
 
 @router.get("/monitor/api/agents/{agent_id}/awaiting")
-async def agent_awaiting(agent_id: int, request: Request, user=Depends(get_current_user)):
+async def agent_awaiting(agent_id: int, request: Request, user=Depends(get_current_user), account_id: int = Depends(get_account_id)):
     if user["role"] != "administrator" and user["id"] != agent_id:
         raise HTTPException(403, "forbidden")
     pool = request.app.state.monitor_pool
@@ -417,20 +424,20 @@ async def agent_awaiting(agent_id: int, request: Request, user=Depends(get_curre
                 SELECT to_value, occurred_at
                 FROM monitor.conversation_events
                 WHERE conversation_id = cs.conversation_id
-                  AND event_type = 'message' AND is_private = false
+                  AND event_type = 'message' AND is_private = false AND account_id = $2
                 ORDER BY occurred_at DESC
                 LIMIT 1
             ) lm ON true
-            WHERE cs.assignee_id = $1 AND cs.status IN ('open', 'pending') AND lm.to_value = 'incoming'
+            WHERE cs.account_id = $2 AND cs.assignee_id = $1 AND cs.status IN ('open', 'pending') AND lm.to_value = 'incoming'
             ORDER BY lm.occurred_at ASC
             """,
-            agent_id,
+            agent_id, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/agents/{agent_id}/reopened")
-async def agent_reopened(agent_id: int, request: Request, days: int = 30, user=Depends(get_current_user)):
+async def agent_reopened(agent_id: int, request: Request, days: int = 30, user=Depends(get_current_user), account_id: int = Depends(get_account_id)):
     if user["role"] != "administrator" and user["id"] != agent_id:
         raise HTTPException(403, "forbidden")
     days = _validate_days_extended(days)
@@ -444,9 +451,10 @@ async def agent_reopened(agent_id: int, request: Request, days: int = 30, user=D
             WHERE e.event_type = 'status_changed'
               AND e.from_value = 'resolved'
               AND e.to_value IN ('open', 'pending')
+              AND e.account_id = $3
               AND e.occurred_at >= now() - make_interval(days => $1)
               AND s.assignee_id = $2
             """,
-            days, agent_id,
+            days, agent_id, account_id,
         )
     return dict(row) if row else {"reopened": 0}

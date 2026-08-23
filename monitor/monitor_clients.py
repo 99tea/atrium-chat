@@ -1,32 +1,35 @@
 from fastapi import APIRouter, Request, Depends
-from auth import require_admin
+from auth import require_admin, get_account_id
 from monitor_core import _validate_days_extended, get_inbox_channel_map, resolve_channel, get_team_names
 
 router = APIRouter()
 
 
 @router.get("/monitor/api/labels")
-async def labels_stats(request: Request, user=Depends(require_admin)):
+async def labels_stats(request: Request, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM monitor.v_label_stats")
+        rows = await conn.fetch("SELECT * FROM monitor.v_label_stats WHERE account_id = $1", account_id)
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/companies")
-async def companies(request: Request, user=Depends(require_admin)):
+async def companies(request: Request, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM monitor.v_company_metrics ORDER BY total_conversations DESC LIMIT 50")
+        rows = await conn.fetch(
+            "SELECT * FROM monitor.v_company_metrics WHERE account_id = $1 ORDER BY total_conversations DESC LIMIT 50",
+            account_id,
+        )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/clients/summary")
-async def clients_summary(request: Request, days: int = 30, user=Depends(require_admin)):
+async def clients_summary(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
+        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT COALESCE(cs.cd_cliente, 'sem-codigo-' || cs.contact_id) AS client_key,
@@ -36,10 +39,10 @@ async def clients_summary(request: Request, days: int = 30, user=Depends(require
             FROM monitor.conversation_snapshot cs
             LEFT JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
             JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                AND e.event_type = 'created' AND e.occurred_at >= now() - make_interval(days => $1)
-            WHERE cs.contact_id IS NOT NULL
+                AND e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
+            WHERE cs.account_id = $2 AND cs.contact_id IS NOT NULL
             """,
-            days,
+            days, account_id,
         )
 
     clients = {}
@@ -70,7 +73,7 @@ async def clients_summary(request: Request, days: int = 30, user=Depends(require
 
 
 @router.get("/monitor/api/subjects/summary")
-async def subjects_summary(request: Request, days: int = 30, user=Depends(require_admin)):
+async def subjects_summary(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -81,18 +84,19 @@ async def subjects_summary(request: Request, days: int = 30, user=Depends(requir
                 avg(v.resolution_minutes) AS avg_resolution
             FROM monitor.conversation_snapshot cs
             JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                AND e.event_type = 'created' AND e.occurred_at >= now() - make_interval(days => $1)
+                AND e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
             LEFT JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
+            WHERE cs.account_id = $2
             GROUP BY subject
             ORDER BY total DESC
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/clients/new-vs-returning")
-async def clients_new_vs_returning(request: Request, days: int = 30, user=Depends(require_admin)):
+async def clients_new_vs_returning(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -102,7 +106,7 @@ async def clients_new_vs_returning(request: Request, days: int = 30, user=Depend
                 SELECT cs.contact_id, min(e.occurred_at) AS first_seen
                 FROM monitor.conversation_snapshot cs
                 JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                WHERE e.event_type = 'created' AND cs.contact_id IS NOT NULL
+                WHERE e.event_type = 'created' AND cs.account_id = $2 AND e.account_id = $2 AND cs.contact_id IS NOT NULL
                 GROUP BY cs.contact_id
             )
             SELECT
@@ -110,18 +114,18 @@ async def clients_new_vs_returning(request: Request, days: int = 30, user=Depend
                 count(*) FILTER (WHERE first_seen < now() - make_interval(days => $1)) AS returning_clients
             FROM first_contact
             """,
-            days,
+            days, account_id,
         )
     return dict(row) if row else {"new_clients": 0, "returning_clients": 0}
 
 
 @router.get("/monitor/api/clients/{client_key}/detail")
-async def client_detail(client_key: str, request: Request, days: int = 30, user=Depends(require_admin)):
+async def client_detail(client_key: str, request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
-        team_names = await get_team_names(conn)
+        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        team_names = await get_team_names(conn, account_id)
 
         if client_key.startswith("sem-codigo-"):
             contact_id = client_key.replace("sem-codigo-", "", 1)
@@ -138,12 +142,12 @@ async def client_detail(client_key: str, request: Request, days: int = 30, user=
                 v.resolution_minutes, v.target_resolution_minutes
             FROM monitor.conversation_snapshot cs
             JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                AND e.event_type = 'created'
+                AND e.event_type = 'created' AND e.account_id = $3
             LEFT JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
-            WHERE {client_filter} AND e.occurred_at >= now() - make_interval(days => $1)
+            WHERE cs.account_id = $3 AND {client_filter} AND e.occurred_at >= now() - make_interval(days => $1)
             ORDER BY e.occurred_at DESC
             """,
-            days, contact_id,
+            days, contact_id, account_id,
         )
 
         by_team_rows = await conn.fetch(
@@ -151,12 +155,12 @@ async def client_detail(client_key: str, request: Request, days: int = 30, user=
                     SELECT cs.team_id, count(*) AS total, avg(v.resolution_minutes) AS avg_resolution, sum(v.resolution_minutes) AS total_minutes
                     FROM monitor.conversation_snapshot cs
                     JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                        AND e.event_type = 'created'
+                        AND e.event_type = 'created' AND e.account_id = $3
                     LEFT JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
-                    WHERE {client_filter} AND e.occurred_at >= now() - make_interval(days => $1)
+                    WHERE cs.account_id = $3 AND {client_filter} AND e.occurred_at >= now() - make_interval(days => $1)
                     GROUP BY cs.team_id
                     """,
-                    days, contact_id,
+                    days, contact_id, account_id,
                 )
 
     if not rows:
@@ -199,11 +203,11 @@ async def client_detail(client_key: str, request: Request, days: int = 30, user=
 
 
 @router.get("/monitor/api/departments/client-time")
-async def departments_client_time(request: Request, days: int = 30, user=Depends(require_admin)):
+async def departments_client_time(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        team_names = await get_team_names(conn)
+        team_names = await get_team_names(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT cs.team_id,
@@ -214,12 +218,12 @@ async def departments_client_time(request: Request, days: int = 30, user=Depends
                 sum(v.resolution_minutes) AS total_minutes
             FROM monitor.conversation_snapshot cs
             JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                AND e.event_type = 'created' AND e.occurred_at >= now() - make_interval(days => $1)
+                AND e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
             JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
-            WHERE cs.team_id IS NOT NULL AND cs.contact_id IS NOT NULL AND v.resolution_minutes IS NOT NULL
+            WHERE cs.account_id = $2 AND cs.team_id IS NOT NULL AND cs.contact_id IS NOT NULL AND v.resolution_minutes IS NOT NULL
             GROUP BY cs.team_id, client_key, client_name
             """,
-            days,
+            days, account_id,
         )
 
     by_team = {}
@@ -233,7 +237,7 @@ async def departments_client_time(request: Request, days: int = 30, user=Depends
 
 
 @router.get("/monitor/api/clients/demanda-avulsa")
-async def clients_demanda_avulsa(request: Request, days: int = 30, user=Depends(require_admin)):
+async def clients_demanda_avulsa(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -244,18 +248,18 @@ async def clients_demanda_avulsa(request: Request, days: int = 30, user=Depends(
                 count(*) AS total
             FROM monitor.conversation_snapshot cs
             JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                AND e.event_type = 'created' AND e.occurred_at >= now() - make_interval(days => $1)
-            WHERE cs.demanda_avulsa = true AND cs.contact_id IS NOT NULL
+                AND e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
+            WHERE cs.account_id = $2 AND cs.demanda_avulsa = true AND cs.contact_id IS NOT NULL
             GROUP BY client_key, client_name
             ORDER BY total DESC
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/clients/by-regime")
-async def clients_by_regime(request: Request, days: int = 30, user=Depends(require_admin)):
+async def clients_by_regime(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -266,19 +270,19 @@ async def clients_by_regime(request: Request, days: int = 30, user=Depends(requi
                 avg(v.resolution_minutes) AS avg_resolution
             FROM monitor.conversation_snapshot cs
             JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                AND e.event_type = 'created' AND e.occurred_at >= now() - make_interval(days => $1)
+                AND e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
             LEFT JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
-            WHERE cs.contact_id IS NOT NULL
+            WHERE cs.account_id = $2 AND cs.contact_id IS NOT NULL
             GROUP BY regime
             ORDER BY total DESC
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/clients/by-status-contrato")
-async def clients_by_status_contrato(request: Request, days: int = 30, user=Depends(require_admin)):
+async def clients_by_status_contrato(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -289,12 +293,12 @@ async def clients_by_status_contrato(request: Request, days: int = 30, user=Depe
                 avg(v.resolution_minutes) AS avg_resolution
             FROM monitor.conversation_snapshot cs
             JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                AND e.event_type = 'created' AND e.occurred_at >= now() - make_interval(days => $1)
+                AND e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
             LEFT JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
-            WHERE cs.contact_id IS NOT NULL
+            WHERE cs.account_id = $2 AND cs.contact_id IS NOT NULL
             GROUP BY status_contrato
             ORDER BY total DESC
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]

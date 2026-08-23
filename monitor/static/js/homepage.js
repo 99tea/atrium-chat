@@ -305,22 +305,22 @@ async function loadHomeStats() {
 
 Screens.home = {
   template: `
-    <div class="home-social-layout" style="height: 100%; display: grid; align-items: stretch; min-height: 0;">
+    <div class="home-social-layout">
       
       <!-- Coluna Esquerda -->
-      <div class="home-col-left" style="display: flex; flex-direction: column; gap: 24px; min-height: 0;">
+      <div class="home-col-left" style="display: flex; flex-direction: column; gap: 24px;">
         
-        <div class="home-profile-card" style="flex: none !important; padding: 24px 16px; background: linear-gradient(180deg, var(--panel-light) 0%, var(--panel) 100%); border-top: 4px solid var(--accent); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; border-left: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+        <div class="home-profile-card" style="padding: 24px 16px; background: linear-gradient(180deg, var(--panel-light) 0%, var(--panel) 100%); border: 1px solid var(--border); border-top: 4px solid var(--accent); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px;">
           <div class="home-avatar" id="home-avatar" style="width: 72px; height: 72px; font-size: 1.8rem; background: linear-gradient(135deg, var(--accent), var(--accent-red)); box-shadow: 0 4px 12px rgba(143, 22, 27, 0.3); margin-bottom: 16px;"></div>
           <h2 class="home-greeting" id="home-greeting" style="margin: 0 0 4px; font-size: 1.2rem;"></h2>
           <p class="muted-text home-date" id="home-date" style="font-size: 0.85rem; margin: 0;"></p>
           <div class="home-clock" id="home-clock" style="font-size: 1.6rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 16px;"></div>
         </div>
 
-        <div class="home-panel" style="flex: 1; display: flex; flex-direction: column; background: var(--panel); border-radius: 12px; border: 1px solid var(--border); padding: 16px; min-height: 0;">
+        <div class="home-panel" style="display: flex; flex-direction: column; background: var(--panel); border-radius: 12px; border: 1px solid var(--border); padding: 16px;">
           
-          <div class="home-panel-header" style="border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-            <h3 style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;"><i class="bi bi-calendar3" style="color: var(--accent-blue); margin-right: 4px;"></i> </h3>
+          <div class="home-panel-header" style="border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 4px;">
+            <h3 style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;"><i class="bi bi-calendar3" style="color: var(--accent-blue); margin-right: 4px;"></i></h3>
             <div style="display:flex; gap:2px; align-items:center; flex-shrink: 0;">
               <button class="home-cal-nav-btn" id="home-cal-prev" style="padding: 2px 6px; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; cursor: pointer; color: var(--text); transition: background 0.2s;" onmouseover="this.style.background='var(--panel-light)'" onmouseout="this.style.background='var(--bg)'"><i class="bi bi-chevron-left"></i></button>
               <span id="home-cal-title" style="font-weight: 600; text-align: center; font-size: 0.8rem; padding: 0 4px; white-space: nowrap;"></span>
@@ -332,25 +332,25 @@ Screens.home = {
             ${HOME_WEEKDAY_SHORT.map(w => `<div>${w}</div>`).join('')}
           </div>
           
-          <div class="home-cal-grid" id="home-cal-grid" style="margin-bottom: 12px; flex: none !important;"></div>
+          <div class="home-cal-grid" id="home-cal-grid" style="margin-bottom: 12px;"></div>
           
-          <div style="display: flex; gap: 8px; flex: none !important;">
+          <div style="display: flex; gap: 8px;">
              <button class="home-cal-today-btn" id="home-cal-today-btn" style="flex: 1; padding: 6px; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; cursor: pointer; color: var(--text); font-weight: 500; font-size: 0.8rem; transition: background 0.2s;" onmouseover="this.style.background='var(--panel-light)'" onmouseout="this.style.background='var(--bg)'">Ir para Hoje</button>
           </div>
 
           <!-- AGENDA (Lista de marcados) -->
-          <div style="display:flex; justify-content:space-between; align-items:center; margin: 16px 0 10px; padding-top: 14px; border-top: 1px solid var(--border); flex: none !important;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin: 16px 0 10px; padding-top: 14px; border-top: 1px solid var(--border);">
             <h4 style="margin:0; font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;"><i class="bi bi-journal-bookmark" style="margin-right: 6px;"></i> Agenda</h4>
           </div>
-          <div id="home-marked-dates-list" style="flex: 1; overflow-y: auto; overflow-x: hidden; padding-right: 4px; min-height: 0;"></div>
+          <div id="home-marked-dates-list" style="max-height: 200px; overflow-y: auto; overflow-x: hidden; padding-right: 4px;"></div>
 
         </div>
 
       </div>
 
       <!-- Coluna Central (Feed principal) -->
-      <div class="home-col-main" style="display: flex; flex-direction: column; gap: 24px; min-width: 0; min-height: 0;">
-        <div class="home-feed-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: none !important;">
+      <div class="home-col-main" style="display: flex; flex-direction: column; gap: 24px;">
+        <div class="home-feed-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           
           <div class="card" style="padding: 24px 20px; border-color: rgba(52, 211, 153, 0.3); background: linear-gradient(135deg, rgba(52, 211, 153, 0.05), var(--panel) 60%); display: flex; align-items: center; gap: 16px; flex-direction: row; justify-content: flex-start; margin: 0;">
             <div style="width: 54px; height: 54px; border-radius: 12px; background: rgba(52, 211, 153, 0.1); color: var(--accent-green); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;"><i class="bi bi-inbox"></i></div>
@@ -370,20 +370,20 @@ Screens.home = {
 
         </div>
 
-        <div class="home-panel" style="flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 20px;">
+        <div class="home-panel" style="display: flex; flex-direction: column; padding: 20px; flex: 1;">
           <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
             <h3 style="margin: 0; font-size: 1rem;"><i class="bi bi-bar-chart" style="margin-right: 6px; color: var(--accent);"></i> Conversas por hora</h3>
           </div>
-          <div class="canvas-container" style="flex: 1; min-height: 0; min-width: 0;">
+          <div class="canvas-container" style="flex: 1; min-height: 250px;">
             <canvas id="home-chart-hourly"></canvas>
           </div>
         </div>
       </div>
 
       <!-- Coluna Direita -->
-      <div class="home-col-right" style="display: flex; flex-direction: column; gap: 24px; min-width: 0; min-height: 0;">
+      <div class="home-col-right" style="display: flex; flex-direction: column; gap: 24px;">
         
-        <div class="panel" style="flex: none !important; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-color: rgba(41, 163, 255, 0.3); background: linear-gradient(135deg, rgba(41, 163, 255, 0.05), var(--panel) 60%); border-radius: 12px; margin: 0;">
+        <div class="panel" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-color: rgba(41, 163, 255, 0.3); background: linear-gradient(135deg, rgba(41, 163, 255, 0.05), var(--panel) 60%); border-radius: 12px; margin: 0;">
            <div style="display: flex; align-items: center; gap: 12px;">
              <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(41, 163, 255, 0.1); color: #29a3ff; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; position: relative;">
                <i class="bi bi-headset"></i>
@@ -394,12 +394,12 @@ Screens.home = {
            <span id="home-stat-agents-online" style="font-size: 1.8rem; font-weight: 700; color: var(--text);">-</span>
         </div>
 
-        <div class="home-panel home-tasks-panel" style="flex: 1; display: flex; flex-direction: column; background: var(--panel); padding: 20px; border-radius: 12px; min-height: 0;">
-          <div class="home-panel-header" style="border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px; flex: none !important;">
+        <div class="home-panel home-tasks-panel" style="display: flex; flex-direction: column; background: var(--panel); padding: 20px; border-radius: 12px; flex: 1;">
+          <div class="home-panel-header" style="border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">
             <h3 style="margin: 0; font-size: 0.95rem;"><i class="bi bi-check2-square" style="color: var(--accent-yellow); margin-right: 6px;"></i> Minhas Tarefas</h3>
           </div>
-          <div id="home-tasks-list" class="home-tasks-list" style="flex: 1; overflow-y: auto; overflow-x: hidden; padding-right: 4px; margin-bottom: 16px; min-height: 0;"></div>
-          <div class="home-task-input-row" style="display: flex; gap: 8px; margin-top: auto; padding: 0; flex: none !important;">
+          <div id="home-tasks-list" class="home-tasks-list" style="max-height: 350px; overflow-y: auto; overflow-x: hidden; padding-right: 4px; margin-bottom: 16px;"></div>
+          <div class="home-task-input-row" style="display: flex; gap: 8px; margin-top: auto; padding: 0;">
             <input id="home-task-input" type="text" placeholder="+ Nova tarefa..." maxlength="200" style="flex: 1; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.85rem;">
             <button onclick="addHomeTask()" class="add-task-btn" style="padding: 12px 16px; border-radius: 8px;"><i class="bi bi-plus-lg"></i></button>
           </div>

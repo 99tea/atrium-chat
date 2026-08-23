@@ -9,24 +9,42 @@ async function saveSettings() {
       cancellation_label: document.getElementById('cancellation-label').value
     })
   });
-  showToast('Configurações salvas');
+  showToast('Configurações salvas', 'success');
 }
 
-const SETTINGS_PRIORITY_ORDER = ['none', 'low', 'medium', 'urgent'];
+const SLA_PRIORITIES = [
+  { key: 'none', label: 'Nenhuma' },
+  { key: 'low', label: 'Baixa' },
+  { key: 'medium', label: 'Média' },
+  { key: 'high', label: 'Alta' },
+  { key: 'urgent', label: 'Urgente' },
+];
 
 async function loadSlaPriorityTargets() {
   const rows = await (await fetch('/monitor/api/sla-priority-targets')).json();
-  const prioMap = { 'urgent': 'Urgente', 'high': 'Alta', 'medium': 'Média', 'low': 'Baixa', 'none': 'Nenhuma' };
+  const byPriority = Object.fromEntries(rows.map(r => [r.priority, r]));
 
-  const ordered = SETTINGS_PRIORITY_ORDER.map(p => rows.find(r => r.priority === p)).filter(Boolean);
-
-  document.querySelector('#sla-priority-table tbody').innerHTML = ordered.map(r => `
-    <tr data-priority="${r.priority}">
-      <td style="font-weight: 500;">${prioMap[r.priority] || r.priority}</td>
-      <td><input type="number" class="sla-frt" value="${r.first_response_minutes}" style="width: 100px; margin: 0; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);"></td>
-      <td><input type="number" step="0.5" class="sla-res" value="${(r.resolution_minutes / 60).toFixed(1)}" style="width: 100px; margin: 0; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);"></td>
-    </tr>
-  `).join('');
+  document.querySelector('#sla-priority-table tbody').innerHTML = SLA_PRIORITIES.map(p => {
+    const existing = byPriority[p.key];
+    const frt = existing ? existing.first_response_minutes : 0;
+    const res = existing ? (existing.resolution_minutes / 60).toFixed(1) : '0.0';
+    return `
+      <tr data-priority="${p.key}">
+        <td style="font-weight: 500;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <i class="bi bi-circle-fill" style="font-size: 0.4rem; color: var(--muted);"></i>
+            ${p.label}
+          </div>
+        </td>
+        <td>
+          <input type="number" class="sla-frt" value="${frt}" min="0" style="width: 100%; max-width: 120px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.85rem;">
+        </td>
+        <td>
+          <input type="number" step="0.5" class="sla-res" value="${res}" min="0" style="width: 100%; max-width: 120px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.85rem;">
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 async function saveSlaPriorityTargets() {
@@ -49,46 +67,81 @@ async function saveSlaPriorityTargets() {
     })
   });
 
-  showToast('SLA salvo');
+  showToast('SLA salvo com sucesso', 'success');
+}
+
+function teamRow(teamId, teamName) {
+  const tr = document.createElement('tr');
+  tr.dataset.teamId = teamId || '';
+  tr.dataset.originalId = teamId || '';
+  tr.innerHTML = `
+    <td style="width: 100px;">
+      <input type="number" class="team-id" value="${teamId !== undefined && teamId !== null ? teamId : ''}" placeholder="ID" min="1" style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.85rem;">
+    </td>
+    <td>
+      <input type="text" class="team-name" value="${teamName || ''}" placeholder="Nome do departamento..." style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.85rem;">
+    </td>
+    <td style="text-align: right; width: 50px;">
+      <button type="button" class="team-remove-btn topbar-btn" data-tooltip="Remover" style="padding: 6px; color: var(--accent-red); background: rgba(255, 92, 92, 0.1); border: 1px solid rgba(255, 92, 92, 0.2);">
+        <i class="bi bi-trash" style="pointer-events: none;"></i>
+      </button>
+    </td>
+  `;
+  tr.querySelector('.team-remove-btn').addEventListener('click', async () => {
+    const originalId = tr.dataset.originalId;
+    if (originalId) await fetch(`/monitor/api/teams/${originalId}`, { method: 'DELETE' });
+    tr.remove();
+  });
+  return tr;
 }
 
 async function loadTeams() {
   const teams = await (await fetch('/monitor/api/teams')).json();
-  document.querySelector('#teams-table tbody').innerHTML = teams.map(t => `
-    <tr data-team-id="${t.team_id}">
-      <td style="font-weight: 500; width: 60px;">${t.team_id}</td>
-      <td><input type="text" class="team-name" value="${t.team_name}" style="width: 100%; margin: 0; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);"></td>
-    </tr>
-  `).join('');
+  const tbody = document.querySelector('#teams-table tbody');
+  tbody.innerHTML = '';
+  teams.forEach(t => tbody.appendChild(teamRow(t.team_id, t.team_name)));
+}
+
+function addTeamRow() {
+  const tbody = document.querySelector('#teams-table tbody');
+  tbody.appendChild(teamRow('', ''));
 }
 
 async function saveTeams() {
-  const payload = [...document.querySelectorAll('#teams-table tbody tr')].map(tr => ({
-    team_id: Number(tr.dataset.teamId),
-    team_name: tr.querySelector('.team-name').value,
-  }));
+  const payload = [...document.querySelectorAll('#teams-table tbody tr')]
+    .map(tr => ({
+      team_id: Number(tr.querySelector('.team-id').value),
+      team_name: tr.querySelector('.team-name').value.trim(),
+    }))
+    .filter(t => t.team_id && t.team_name);
+
   await fetch('/monitor/api/teams', {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload)
   });
+  await loadTeams();
   await loadGlobalConfig();
-  showToast('Times salvos');
+  showToast('Times salvos com sucesso', 'success');
 }
 
 function renderLabelColorsTable(colors) {
   document.querySelector('#label-colors-table tbody').innerHTML = Object.entries(colors).map(([label, color]) => `
     <tr data-label="${label}">
-      <td><input type="text" class="label-name" value="${label}" style="width: 100%; margin: 0; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);"></td>
+      <td style="width: 60%;">
+        <input type="text" class="label-name" value="${label}" style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.85rem;">
+      </td>
       <td>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <input type="color" class="label-color" value="${color}" style="width: 36px; height: 36px; border: none; border-radius: 6px; cursor: pointer; padding: 0; background: transparent;">
-          <span class="muted-text" style="font-size: 0.85rem; font-family: monospace;">${color}</span>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="position: relative; width: 36px; height: 36px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); flex-shrink: 0;">
+            <input type="color" class="label-color" value="${color}" style="position: absolute; top: -10px; left: -10px; width: 60px; height: 60px; border: none; cursor: pointer; padding: 0; background: transparent;">
+          </div>
+          <span class="muted-text" style="font-size: 0.85rem; font-family: monospace; background: var(--bg); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);">${color.toUpperCase()}</span>
         </div>
       </td>
-      <td style="text-align: right;">
-        <button type="button" class="label-remove-btn topbar-btn" data-tooltip="Remover" style="padding: 6px; color: var(--accent-red);">
-          <i class="bi bi-trash"></i>
+      <td style="text-align: right; width: 50px;">
+        <button type="button" class="label-remove-btn topbar-btn" data-tooltip="Remover" style="padding: 6px; color: var(--accent-red); background: rgba(255, 92, 92, 0.1); border: 1px solid rgba(255, 92, 92, 0.2);">
+          <i class="bi bi-trash" style="pointer-events: none;"></i>
         </button>
       </td>
     </tr>
@@ -114,15 +167,19 @@ function addLabelColorRow() {
   const tr = document.createElement('tr');
   tr.dataset.label = '';
   tr.innerHTML = `
-    <td><input type="text" class="label-name" value="" placeholder="nome-da-etiqueta" style="width: 100%; margin: 0; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);"></td>
+    <td style="width: 60%;">
+      <input type="text" class="label-name" value="" placeholder="nome-da-etiqueta" style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.85rem;">
+    </td>
     <td>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <input type="color" class="label-color" value="#9296b8" style="width: 36px; height: 36px; border: none; border-radius: 6px; cursor: pointer; padding: 0; background: transparent;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="position: relative; width: 36px; height: 36px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); flex-shrink: 0;">
+          <input type="color" class="label-color" value="#9296b8" style="position: absolute; top: -10px; left: -10px; width: 60px; height: 60px; border: none; cursor: pointer; padding: 0; background: transparent;">
+        </div>
       </div>
     </td>
-    <td style="text-align: right;">
-      <button type="button" class="label-remove-btn topbar-btn" data-tooltip="Remover" style="padding: 6px; color: var(--accent-red);">
-        <i class="bi bi-trash"></i>
+    <td style="text-align: right; width: 50px;">
+      <button type="button" class="label-remove-btn topbar-btn" data-tooltip="Remover" style="padding: 6px; color: var(--accent-red); background: rgba(255, 92, 92, 0.1); border: 1px solid rgba(255, 92, 92, 0.2);">
+        <i class="bi bi-trash" style="pointer-events: none;"></i>
       </button>
     </td>
   `;
@@ -143,7 +200,7 @@ async function saveLabelColors() {
     body: JSON.stringify(payload)
   });
   await loadGlobalConfig();
-  showToast('Cores de etiquetas salvas');
+  showToast('Cores de etiquetas salvas', 'success');
 }
 
 const BUG_STATUS_MAP = {
@@ -155,7 +212,7 @@ const BUG_STATUS_MAP = {
 let bugStatusFilter = '';
 
 function bugStatusSelect(bug) {
-  return `<select class="bug-status-select" data-bug-id="${bug.id}" style="width: auto; margin: 0; padding: 4px 8px; font-size: 0.85em; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer;">
+  return `<select class="bug-status-select" data-bug-id="${bug.id}" style="width: auto; margin: 0; padding: 6px 10px; font-size: 0.8rem; font-weight: 500; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer;">
     ${Object.entries(BUG_STATUS_MAP).map(([key, info]) => `<option value="${key}" ${bug.status === key ? 'selected' : ''}>${info.label}</option>`).join('')}
   </select>`;
 }
@@ -166,30 +223,30 @@ async function loadBugReports() {
 
   const tbody = document.querySelector('#bug-reports-table tbody');
   if (bugs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding: 24px;"><i class="bi bi-emoji-smile" style="font-size: 1.8rem; margin-bottom: 8px;"></i><span>Nenhum report por aqui</span></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding: 32px;"><i class="bi bi-emoji-smile" style="font-size: 2rem; margin-bottom: 8px; color: var(--accent-green);"></i><span>Nenhum report por aqui</span></div></td></tr>';
     return;
   }
 
   tbody.innerHTML = bugs.map(b => {
     const d = new Date(b.created_at);
-    const dateStr = `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
+    const dateStr = `${d.toLocaleDateString('pt-BR')} <span style="opacity: 0.6; margin-left: 4px;">${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</span>`;
     return `
       <tr data-bug-id="${b.id}">
-        <td class="muted-text" style="white-space: nowrap; font-size: 0.85em;">${dateStr}</td>
-        <td style="white-space: nowrap; font-weight: 500;">
+        <td style="white-space: nowrap; font-size: 0.8rem;">${dateStr}</td>
+        <td style="white-space: nowrap; font-weight: 500; overflow: hidden; text-overflow: ellipsis;" title="${b.user_name}">
           <div style="display: flex; align-items: center; gap: 8px;">
-            <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 0.7rem;"><i class="bi bi-person"></i></div>
-            ${b.user_name}
+            <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--panel-light); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; border: 1px solid var(--border);"><i class="bi bi-person"></i></div>
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${b.user_name}</span>
           </div>
         </td>
-        <td class="muted-text" style="white-space: nowrap;">${b.route || '-'}</td>
-        <td style="max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${b.description}</td>
+        <td class="muted-text" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.8rem;">${b.route || '-'}</td>
+        <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem;" title="${b.description}">${b.description}</td>
         <td style="white-space: nowrap;">${bugStatusSelect(b)}</td>
         <td style="white-space: nowrap; text-align: right;">
-          <button class="topbar-btn bug-view-btn" data-bug-id="${b.id}" data-tooltip="Ver detalhes" style="padding: 4px 8px; margin-right: 4px;">
+          <button class="topbar-btn bug-view-btn" data-bug-id="${b.id}" data-tooltip="Ver detalhes" style="padding: 6px; margin-right: 4px; background: rgba(255,255,255,0.05);">
             <i class="bi bi-eye" style="pointer-events: none;"></i>
           </button>
-          <button class="topbar-btn bug-delete-btn" data-bug-id="${b.id}" data-tooltip="Excluir" style="padding: 4px 8px; color: var(--accent-red);">
+          <button class="topbar-btn bug-delete-btn" data-bug-id="${b.id}" data-tooltip="Excluir" style="padding: 6px; color: var(--accent-red); background: rgba(255, 92, 92, 0.1); border: 1px solid rgba(255, 92, 92, 0.2);">
             <i class="bi bi-trash" style="pointer-events: none;"></i>
           </button>
         </td>
@@ -237,7 +294,7 @@ function openBugDetailModal(bug) {
   const wrap = document.getElementById('bug-detail-screenshot-wrap');
   const img = document.getElementById('bug-detail-screenshot');
   const clickArea = document.getElementById('bug-detail-screenshot-area');
-  
+
   if (bug.screenshot) {
     img.src = bug.screenshot;
     clickArea.onclick = () => window.open(bug.screenshot, '_blank');
@@ -255,101 +312,125 @@ function closeBugDetailModal() {
 
 Screens.settings = {
   template: `
-    <div class="panel" id="settings-panel-gerais" style="margin-bottom: 24px;">
-      <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
-        <h3 style="margin: 0;"><i class="bi bi-sliders"></i> Gerais</h3>
+    <div style="display:flex; align-items:center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
+      <div class="home-avatar" style="width: 56px; height: 56px; font-size: 1.4rem; margin-bottom: 0; background: var(--accent);">
+        <i class="bi bi-gear"></i>
       </div>
-
-      <div class="grid-2-cols" style="gap: 16px; margin-bottom: 16px;">
-        <div class="form-group" style="margin: 0;">
-          <label for="whatsapp-inbox-ids" style="color: var(--muted); font-size: 0.85rem; margin-bottom: 6px; display: block;">Inbox IDs WhatsApp (separados por vírgula)</label>
-          <input id="whatsapp-inbox-ids" type="text" placeholder="1" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
-        </div>
-
-        <div class="form-group" style="margin: 0;">
-          <label for="email-inbox-ids" style="color: var(--muted); font-size: 0.85rem; margin-bottom: 6px; display: block;">Inbox IDs E-mail (separados por vírgula)</label>
-          <input id="email-inbox-ids" type="text" placeholder="3,5" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
-        </div>
+      <div>
+        <h2 style="margin: 0 0 4px; font-size: 1.4rem;">Configurações</h2>
+        <p class="muted-text" style="margin: 0; font-size: 0.9rem;">Ajustes globais do sistema e painéis</p>
       </div>
-
-      <div class="form-group" style="margin-bottom: 16px;">
-        <label for="chatwoot-base-url" style="color: var(--muted); font-size: 0.85rem; margin-bottom: 6px; display: block;">URL base do Chatwoot</label>
-        <input id="chatwoot-base-url" type="text" placeholder="https://chat.australisdev.online" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
-      </div>
-
-      <div class="form-group" style="margin-bottom: 20px;">
-        <label for="cancellation-label" style="color: var(--muted); font-size: 0.85rem; margin-bottom: 6px; display: block;">Etiqueta de cancelamento (exclui das métricas de desempenho)</label>
-        <input id="cancellation-label" type="text" placeholder="cancelado" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
-      </div>
-
-      <button onclick="saveSettings()" style="padding: 8px 16px; border-radius: 6px; background: var(--accent); color: #fff; border: none; cursor: pointer; font-weight: 500;"><i class="bi bi-check2"></i> Salvar Gerais</button>
     </div>
 
-    <div class="grid-2-cols" style="gap: 24px; margin-bottom: 24px;">
-      <!-- SLA Targets -->
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
-          <h3 style="margin: 0;"><i class="bi bi-shield-check"></i> SLA por prioridade</h3>
+    <!-- Ajustes Gerais -->
+    <div class="panel" id="settings-panel-gerais" style="margin-bottom: 24px; border-radius: 12px; padding: 24px; min-width: 0;">
+      <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: none; padding-bottom: 0;">
+        <h3 style="margin: 0; font-size: 1.1rem;"><i class="bi bi-sliders" style="color: var(--accent-blue); margin-right: 6px;"></i> Variáveis Globais</h3>
+      </div>
+
+      <div class="grid-2-cols" style="gap: 20px; margin-bottom: 20px;">
+        <div class="form-group" style="margin: 0;">
+          <label for="whatsapp-inbox-ids" style="color: var(--muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Inbox IDs WhatsApp (separados por vírgula)</label>
+          <input id="whatsapp-inbox-ids" type="text" placeholder="Ex: 1, 2" style="width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.95rem;">
         </div>
 
-        <div class="form-group" style="margin-bottom: 16px;">
-          <label for="sla-target-percent" style="color: var(--muted); font-size: 0.85rem; margin-bottom: 6px; display: block;">Meta Geral de SLA Atingido (%)</label>
-          <div style="position: relative; max-width: 150px;">
-            <input id="sla-target-percent" type="number" min="0" max="100" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
-            <i class="bi bi-percent" style="position: absolute; right: 12px; top: 12px; color: var(--muted);"></i>
+        <div class="form-group" style="margin: 0;">
+          <label for="email-inbox-ids" style="color: var(--muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Inbox IDs E-mail (separados por vírgula)</label>
+          <input id="email-inbox-ids" type="text" placeholder="Ex: 3, 5" style="width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.95rem;">
+        </div>
+      </div>
+
+      <div class="grid-2-cols" style="gap: 20px; margin-bottom: 24px;">
+        <div class="form-group" style="margin: 0;">
+          <label for="chatwoot-base-url" style="color: var(--muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">URL base do Chatwoot</label>
+          <input id="chatwoot-base-url" type="text" placeholder="https://chat.seusite.com.br" style="width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.95rem;">
+        </div>
+
+        <div class="form-group" style="margin: 0;">
+          <label for="cancellation-label" style="color: var(--muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Etiqueta de Cancelamento (exclui das métricas)</label>
+          <input id="cancellation-label" type="text" placeholder="cancelado" style="width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.95rem;">
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid var(--border); padding-top: 20px; display: flex; justify-content: flex-end;">
+        <button onclick="saveSettings()" style="padding: 10px 24px; border-radius: 8px; background: var(--accent); color: #fff; border: none; cursor: pointer; font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; transition: filter 0.2s;"><i class="bi bi-cloud-check"></i> Salvar Globais</button>
+      </div>
+    </div>
+
+    <!-- SLAs e Times -->
+    <div class="grid-2-cols" style="gap: 24px; margin-bottom: 24px;">
+      
+      <!-- SLA Targets -->
+      <div class="panel" style="display: flex; flex-direction: column; border-radius: 12px; padding: 24px; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: none; padding-bottom: 0; display: flex; justify-content: space-between; align-items: center;">
+          <h3 style="margin: 0; font-size: 1.1rem;"><i class="bi bi-shield-check" style="color: var(--accent-green); margin-right: 6px;"></i> SLA por prioridade</h3>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+          <label for="sla-target-percent" style="color: var(--muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Meta Geral de Atingimento (%)</label>
+          <div style="position: relative; max-width: 160px;">
+            <input id="sla-target-percent" type="number" min="0" max="100" style="width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.95rem; font-weight: 600;">
+            <i class="bi bi-percent" style="position: absolute; right: 14px; top: 12px; color: var(--muted);"></i>
           </div>
         </div>
 
-        <div class="table-responsive" style="flex: 1; margin-bottom: 16px;">
-          <table id="sla-priority-table">
-            <thead>
+        <div class="table-responsive" style="flex: 1; margin-bottom: 20px; border: 1px solid var(--border); border-radius: 8px;">
+          <table id="sla-priority-table" style="margin: 0;">
+            <thead style="background: rgba(255,255,255,0.02);">
               <tr>
-                <th>Prioridade</th>
-                <th>1ª Resposta (min)</th>
-                <th>Resolução (horas)</th>
+                <th style="font-size: 0.8rem;">Prioridade</th>
+                <th style="font-size: 0.8rem;">1ª Resposta (min)</th>
+                <th style="font-size: 0.8rem;">Resolução (horas)</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
 
-        <button onclick="saveSlaPriorityTargets()" style="padding: 8px 16px; border-radius: 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-weight: 500; align-self: flex-start;"><i class="bi bi-check2"></i> Salvar SLA</button>
+        <div style="border-top: 1px solid var(--border); padding-top: 20px;">
+          <button onclick="saveSlaPriorityTargets()" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-weight: 600; transition: background 0.2s; display: flex; justify-content: center; align-items: center; gap: 8px;"><i class="bi bi-check2-circle"></i> Salvar Tempos de SLA</button>
+        </div>
       </div>
 
       <!-- Teams -->
-      <div class="panel" style="display: flex; flex-direction: column;">
-        <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
-          <h3 style="margin: 0;"><i class="bi bi-diagram-3"></i> Times / Departamentos</h3>
+      <div class="panel" style="display: flex; flex-direction: column; border-radius: 12px; padding: 24px; min-width: 0;">
+        <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: none; padding-bottom: 0;">
+          <h3 style="margin: 0; font-size: 1.1rem;"><i class="bi bi-diagram-3" style="color: var(--accent-yellow); margin-right: 6px;"></i> Departamentos / Times</h3>
         </div>
 
-        <div class="table-responsive" style="flex: 1; margin-bottom: 16px;">
-          <table id="teams-table">
-            <thead>
+        <div class="table-responsive" style="flex: 1; margin-bottom: 20px; border: 1px solid var(--border); border-radius: 8px; max-height: 400px; overflow-y: auto;">
+          <table id="teams-table" style="margin: 0;">
+            <thead style="background: rgba(255,255,255,0.02);">
               <tr>
-                <th>ID</th>
-                <th style="width: 100%;">Nome do Time</th>
+                <th style="width: 100px; font-size: 0.8rem;">ID Chatwoot</th>
+                <th style="width: 100%; font-size: 0.8rem;">Nome no Monitor</th>
+                <th></th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
 
-        <button onclick="saveTeams()" style="padding: 8px 16px; border-radius: 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-weight: 500; align-self: flex-start;"><i class="bi bi-check2"></i> Salvar Times</button>
+        <div style="border-top: 1px solid var(--border); padding-top: 20px; display: flex; gap: 12px;">
+          <button type="button" onclick="addTeamRow()" style="flex: 1; padding: 10px; border-radius: 8px; background: transparent; color: var(--text); border: 1px dashed var(--muted); cursor: pointer; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 8px; transition: border-color 0.2s;"><i class="bi bi-plus-lg"></i> Novo</button>
+          <button onclick="saveTeams()" style="flex: 2; padding: 10px; border-radius: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 8px; transition: background 0.2s;"><i class="bi bi-check2-circle"></i> Salvar Times</button>
+        </div>
       </div>
+
     </div>
 
     <!-- Label Colors -->
-    <div class="panel" id="settings-panel-labels" style="margin-bottom: 24px;">
-      <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
-        <h3 style="margin: 0;"><i class="bi bi-tags"></i> Cores de Etiquetas</h3>
+    <div class="panel" id="settings-panel-labels" style="margin-bottom: 24px; border-radius: 12px; padding: 24px; min-width: 0;">
+      <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: none; padding-bottom: 0;">
+        <h3 style="margin: 0; font-size: 1.1rem;"><i class="bi bi-palette" style="color: var(--accent); margin-right: 6px;"></i> Cores de Etiquetas</h3>
       </div>
 
-      <div class="table-responsive" style="margin-bottom: 16px; max-height: 350px;">
-        <table id="label-colors-table">
-          <thead>
+      <div class="table-responsive" style="margin-bottom: 20px; max-height: 400px; border: 1px solid var(--border); border-radius: 8px;">
+        <table id="label-colors-table" style="margin: 0;">
+          <thead style="background: rgba(255,255,255,0.02);">
             <tr>
-              <th style="width: 100%;">Nome da Etiqueta</th>
-              <th>Cor Visual</th>
+              <th style="width: 60%; font-size: 0.8rem;">Nome Exato da Etiqueta</th>
+              <th style="font-size: 0.8rem;">Cor Visual</th>
               <th></th>
             </tr>
           </thead>
@@ -357,35 +438,35 @@ Screens.settings = {
         </table>
       </div>
 
-      <div style="display: flex; gap: 12px;">
-        <button type="button" onclick="addLabelColorRow()" style="padding: 8px 16px; border-radius: 6px; background: var(--bg); color: var(--text); border: 1px dashed var(--muted); cursor: pointer; font-weight: 500;"><i class="bi bi-plus-lg"></i> Adicionar Etiqueta</button>
-        <button onclick="saveLabelColors()" style="padding: 8px 16px; border-radius: 6px; background: var(--accent); color: #fff; border: none; cursor: pointer; font-weight: 500;"><i class="bi bi-check2"></i> Salvar Cores</button>
+      <div style="border-top: 1px solid var(--border); padding-top: 20px; display: flex; gap: 12px;">
+        <button type="button" onclick="addLabelColorRow()" style="padding: 10px 20px; border-radius: 8px; background: transparent; color: var(--text); border: 1px dashed var(--muted); cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;"><i class="bi bi-plus-lg"></i> Adicionar Regra</button>
+        <button onclick="saveLabelColors()" style="padding: 10px 24px; border-radius: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;"><i class="bi bi-check2-circle"></i> Salvar Cores</button>
       </div>
     </div>
 
     <!-- Bug Reports -->
-    <div class="panel" id="settings-panel-bugs">
-      <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin: 0;"><i class="bi bi-bug"></i> Gestão de Feedbacks</h3>
-        
+    <div class="panel" id="settings-panel-bugs" style="border-radius: 12px; padding: 24px; min-width: 0;">
+      <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: none; padding-bottom: 0; display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0; font-size: 1.1rem;"><i class="bi bi-bug" style="color: var(--accent-red); margin-right: 6px;"></i> Gestão de Feedbacks</h3>
+
         <div class="filter-bar" id="bug-status-tabs" style="margin: 0; background: var(--bg); padding: 4px; border-radius: 8px; border: 1px solid var(--border);">
-          <button class="filter-btn active" data-status="" style="padding: 4px 12px; font-size: 0.8rem; border-radius: 4px;">Todos</button>
-          <button class="filter-btn" data-status="novo" style="padding: 4px 12px; font-size: 0.8rem; border-radius: 4px;">Novo</button>
-          <button class="filter-btn" data-status="andamento" style="padding: 4px 12px; font-size: 0.8rem; border-radius: 4px;">Andamento</button>
-          <button class="filter-btn" data-status="finalizado" style="padding: 4px 12px; font-size: 0.8rem; border-radius: 4px;">Finalizado</button>
+          <button class="filter-btn active" data-status="" style="padding: 6px 14px; font-size: 0.8rem; border-radius: 4px;">Todos</button>
+          <button class="filter-btn" data-status="novo" style="padding: 6px 14px; font-size: 0.8rem; border-radius: 4px;">Novo</button>
+          <button class="filter-btn" data-status="andamento" style="padding: 6px 14px; font-size: 0.8rem; border-radius: 4px;">Andamento</button>
+          <button class="filter-btn" data-status="finalizado" style="padding: 6px 14px; font-size: 0.8rem; border-radius: 4px;">Finalizado</button>
         </div>
       </div>
 
-      <div class="table-responsive" style="max-height: 450px;">
-        <table id="bug-reports-table">
-          <thead>
+      <div class="table-responsive" style="max-height: 500px; border: 1px solid var(--border); border-radius: 8px; overflow-x: hidden;">
+        <table id="bug-reports-table" style="margin: 0; table-layout: fixed; width: 100%;">
+          <thead style="background: rgba(255,255,255,0.02);">
             <tr>
-              <th>Data</th>
-              <th>Usuário</th>
-              <th>Tela</th>
-              <th style="width: 100%;">Descrição</th>
-              <th>Status</th>
-              <th></th>
+              <th style="font-size: 0.75rem; width: 16%;">Data</th>
+              <th style="font-size: 0.75rem; width: 16%;">Usuário</th>
+              <th style="font-size: 0.75rem; width: 12%;">Tela</th>
+              <th style="font-size: 0.75rem; width: 34%;">Descrição</th>
+              <th style="font-size: 0.75rem; width: 14%;">Status</th>
+              <th style="width: 8%;"></th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -393,11 +474,11 @@ Screens.settings = {
       </div>
     </div>
 
-	<!-- Bug Detail Modal -->
+    <!-- Bug Detail Modal -->
     <div id="bug-detail-modal" class="modal hidden">
       <div class="modal-content" style="max-width: 650px; border-radius: 12px; padding: 24px; background: var(--panel); border: 1px solid var(--border);">
         <button class="modal-close" onclick="closeBugDetailModal()" style="font-size: 1.5rem; color: var(--muted);">&times;</button>
-        
+
         <h3 style="margin-top: 0; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); padding-bottom: 16px;">
           <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(248, 113, 113, 0.1); color: var(--accent-red); display: flex; align-items: center; justify-content: center;">
             <i class="bi bi-bug-fill"></i>
@@ -449,11 +530,12 @@ Screens.settings = {
       });
     }
 
+    const isAdmin = currentUser.role === 'administrator';
     const isDeveloper = !!currentUser.is_developer;
 
     const gerais = document.getElementById('settings-panel-gerais');
     const bugsPanel = document.getElementById('settings-panel-bugs');
-    if (gerais) gerais.style.display = isDeveloper ? '' : 'none';
+    if (gerais) gerais.style.display = isAdmin ? '' : 'none';
     if (bugsPanel) bugsPanel.style.display = isDeveloper ? '' : 'none';
 
     const settings = await (await fetch('/monitor/api/settings')).json();
@@ -462,12 +544,14 @@ Screens.settings = {
     await loadTeams();
     await loadLabelColors();
 
-    if (isDeveloper) {
+    if (isAdmin) {
       document.getElementById('chatwoot-base-url').value = settings.chatwoot_base_url || '';
       document.getElementById('whatsapp-inbox-ids').value = settings.whatsapp_inbox_ids || '';
       document.getElementById('email-inbox-ids').value = settings.email_inbox_ids || '';
       document.getElementById('cancellation-label').value = settings.cancellation_label || 'cancelado';
+    }
 
+    if (isDeveloper) {
       bugStatusFilter = '';
       document.querySelectorAll('#bug-status-tabs .filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -481,9 +565,8 @@ Screens.settings = {
           loadBugReports();
         });
       });
-      // Set default style for active tab
       document.querySelector('#bug-status-tabs .filter-btn.active').style.background = 'var(--panel)';
-      
+
       await loadBugReports();
     }
   },

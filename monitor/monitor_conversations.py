@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
 from datetime import datetime, timezone
 from typing import Optional
-from auth import get_current_user
+from auth import get_current_user, get_account_id
 from monitor_core import get_inbox_channel_map, resolve_channel
 import httpx
 import os
@@ -30,6 +30,7 @@ async def list_conversations(
     page: int = 1,
     page_size: int = 50,
     user=Depends(get_current_user),
+    account_id: int = Depends(get_account_id),
 ):
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
@@ -37,8 +38,8 @@ async def list_conversations(
     sort_col = ALLOWED_SORT.get(sort_by, "sla_deadline")
     sort_dir = "DESC" if sort_dir.lower() == "desc" else "ASC"
 
-    where = []
-    params = []
+    where = ["cs.account_id = $1"]
+    params = [account_id]
 
     if status == "cancelled":
         where.append("cs.status = 'resolved' AND cs.excluded_from_metrics = true")
@@ -59,7 +60,7 @@ async def list_conversations(
         idx = len(params)
         where.append(f"(cs.contact_name ILIKE ${idx} OR cs.company_name ILIKE ${idx} OR cs.subject ILIKE ${idx})")
 
-    where_clause = "WHERE " + " AND ".join(where) if where else ""
+    where_clause = "WHERE " + " AND ".join(where)
 
     query = f"""
         WITH base AS (
@@ -82,7 +83,7 @@ async def list_conversations(
             FROM monitor.conversation_snapshot cs
             LEFT JOIN monitor.v_conversation_lifecycle l ON l.conversation_id = cs.conversation_id
             LEFT JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
-            LEFT JOIN monitor.sla_priority_targets pt ON pt.priority = COALESCE(cs.priority, 'none')
+            LEFT JOIN monitor.sla_priority_targets pt ON pt.priority = COALESCE(cs.priority, 'none') AND pt.account_id = cs.account_id
             {where_clause}
         )
         SELECT *, count(*) OVER() AS total_count
@@ -93,7 +94,7 @@ async def list_conversations(
 
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
+        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
         rows = await conn.fetch(query, *params)
 
     total = rows[0]["total_count"] if rows else 0
@@ -112,7 +113,7 @@ async def list_conversations(
 
 
 @router.get("/monitor/api/conversations/labels")
-async def conversations_labels(request: Request, user=Depends(get_current_user)):
+async def conversations_labels(request: Request, user=Depends(get_current_user), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -120,9 +121,10 @@ async def conversations_labels(request: Request, user=Depends(get_current_user))
             SELECT DISTINCT label
             FROM monitor.conversation_snapshot cs
             LEFT JOIN LATERAL unnest(COALESCE(cs.labels, '{}')) AS label ON true
-            WHERE label IS NOT NULL
+            WHERE cs.account_id = $1 AND label IS NOT NULL
             ORDER BY label
-            """
+            """,
+            account_id,
         )
     return [r["label"] for r in rows]
 

@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Request, Depends
-from auth import require_admin
+from auth import require_admin, get_account_id
 from monitor_core import _validate_days_extended, get_inbox_channel_map, resolve_channel, get_team_names
 
 router = APIRouter()
 
 
 @router.get("/monitor/api/sla/summary")
-async def sla_summary(request: Request, days: int = 30, user=Depends(require_admin)):
+async def sla_summary(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -17,15 +17,15 @@ async def sla_summary(request: Request, days: int = 30, user=Depends(require_adm
                 avg(resolution_minutes) AS avg_resolution,
                 sum((resolution_minutes > target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
             FROM monitor.v_sla
-            WHERE last_resolved_at >= now() - make_interval(days => $1)
+            WHERE account_id = $2 AND last_resolved_at >= now() - make_interval(days => $1)
             """,
-            days,
+            days, account_id,
         )
     return dict(row) if row else {}
 
 
 @router.get("/monitor/api/sla/by-priority")
-async def sla_by_priority(request: Request, days: int = 30, user=Depends(require_admin)):
+async def sla_by_priority(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -38,20 +38,20 @@ async def sla_by_priority(request: Request, days: int = 30, user=Depends(require
                 sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = v.conversation_id
-            WHERE v.last_resolved_at >= now() - make_interval(days => $1)
+            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1)
             GROUP BY priority
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/sla/by-channel")
-async def sla_by_channel(request: Request, days: int = 30, user=Depends(require_admin)):
+async def sla_by_channel(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
+        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT v.inbox_id,
@@ -60,10 +60,10 @@ async def sla_by_channel(request: Request, days: int = 30, user=Depends(require_
                 avg(v.resolution_minutes) AS avg_resolution,
                 sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
-            WHERE v.last_resolved_at >= now() - make_interval(days => $1)
+            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1)
             GROUP BY v.inbox_id
             """,
-            days,
+            days, account_id,
         )
 
     by_channel = {}
@@ -88,7 +88,7 @@ async def sla_by_channel(request: Request, days: int = 30, user=Depends(require_
 
 
 @router.get("/monitor/api/sla/by-subject")
-async def sla_by_subject(request: Request, days: int = 30, user=Depends(require_admin)):
+async def sla_by_subject(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -101,21 +101,21 @@ async def sla_by_subject(request: Request, days: int = 30, user=Depends(require_
                 sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = v.conversation_id
-            WHERE v.last_resolved_at >= now() - make_interval(days => $1)
+            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1)
             GROUP BY subject
             ORDER BY total DESC
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/sla/by-team")
-async def sla_by_team(request: Request, days: int = 30, user=Depends(require_admin)):
+async def sla_by_team(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        team_names = await get_team_names(conn)
+        team_names = await get_team_names(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT v.team_id,
@@ -124,10 +124,10 @@ async def sla_by_team(request: Request, days: int = 30, user=Depends(require_adm
                 avg(v.resolution_minutes) AS avg_resolution,
                 sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
-            WHERE v.last_resolved_at >= now() - make_interval(days => $1)
+            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1)
             GROUP BY v.team_id
             """,
-            days,
+            days, account_id,
         )
     return [
         {
@@ -143,7 +143,7 @@ async def sla_by_team(request: Request, days: int = 30, user=Depends(require_adm
 
 
 @router.get("/monitor/api/sla/by-client")
-async def sla_by_client(request: Request, days: int = 30, user=Depends(require_admin)):
+async def sla_by_client(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -156,11 +156,11 @@ async def sla_by_client(request: Request, days: int = 30, user=Depends(require_a
                 sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = v.conversation_id
-            WHERE v.last_resolved_at >= now() - make_interval(days => $1) AND cs.contact_id IS NOT NULL
+            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1) AND cs.contact_id IS NOT NULL
             GROUP BY client_key, client_name
             HAVING count(*) >= 3
             """,
-            days,
+            days, account_id,
         )
 
     clients = [dict(r) for r in rows]

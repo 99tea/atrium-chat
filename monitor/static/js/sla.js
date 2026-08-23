@@ -260,7 +260,7 @@ Screens.sla = {
     <div class="grid-2-cols" style="margin-bottom: 24px;">
       <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
         <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-shield-exclamation"></i> Clientes (Maiores Ofensores)</h3>
+          <h3 style="margin: 0;"><i class="bi bi-shield-exclamation"></i> Clientes (SLA Perdidos)</h3>
         </div>
         <div class="table-responsive" style="flex: 1; max-height: 400px;">
           <table id="table-sla-client-worst">

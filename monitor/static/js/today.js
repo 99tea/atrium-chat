@@ -6,21 +6,22 @@ const KPI_COLUMNS = {
   'breakdown': [['conversation_id', 'ID'], ['contact_name', 'Cliente'], ['assignee_name', 'Agente'], ['status', 'Status'], ['priority', 'Prioridade'], ['channel', 'Canal'], ['age_minutes', 'Aberta há']],
 };
 
+// Mapas Encurtados para caber perfeitamente na tabela
 const TODAY_CHANNEL_MAP = { 
-  whatsapp: { label: 'WhatsApp', badge: 'badge-green', icon: 'bi-whatsapp' }, 
+  whatsapp: { label: 'WPP', badge: 'badge-green', icon: 'bi-whatsapp' }, 
   email: { label: 'E-mail', badge: 'badge-blue', icon: 'bi-envelope' }, 
-  other: { label: 'Outros', badge: 'badge-neutral', icon: 'bi-chat-dots' } 
+  other: { label: 'Out', badge: 'badge-neutral', icon: 'bi-chat-dots' } 
 };
 
 const TODAY_PRIORITY_MAP = { 
-  urgent: { label: 'Urgente', badge: 'badge-red', icon: 'bi-exclamation-triangle-fill' }, 
-  high: { label: 'Alta', badge: 'badge-red', icon: 'bi-arrow-up-circle-fill' }, 
-  medium: { label: 'Média', badge: 'badge-yellow', icon: 'bi-dash-circle-fill' }, 
-  low: { label: 'Baixa', badge: 'badge-neutral', icon: 'bi-arrow-down-circle-fill' }, 
-  none: { label: 'Nenhuma', badge: 'badge-neutral', icon: 'bi-info-circle-fill' } 
+  urgent: { label: 'Urg', badge: 'badge-red', icon: 'bi-exclamation-triangle-fill' }, 
+  high: { label: 'Alt', badge: 'badge-red', icon: 'bi-arrow-up-circle-fill' }, 
+  medium: { label: 'Med', badge: 'badge-yellow', icon: 'bi-dash-circle-fill' }, 
+  low: { label: 'Bxa', badge: 'badge-neutral', icon: 'bi-arrow-down-circle-fill' }, 
+  none: { label: 'Nen', badge: 'badge-neutral', icon: 'bi-info-circle-fill' } 
 };
 
-// Nova formatação de tempo inteligente para exibir Dias e Horas
+// Formatação de tempo inteligente (Dias e Horas)
 function formatDetailedDuration(totalMinutes) {
   if (totalMinutes === null || totalMinutes === undefined) return '-';
   const minutes = Math.round(totalMinutes);
@@ -43,22 +44,31 @@ function formatDetailedDuration(totalMinutes) {
 function todayPriorityBadge(val) {
   const prio = String(val ?? 'none').toLowerCase();
   const info = TODAY_PRIORITY_MAP[prio] || TODAY_PRIORITY_MAP.none;
-  return `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 8px;"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
+  return `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 2px 6px; font-size: 0.65rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
 }
 
 function todayChannelBadge(val) {
   const info = TODAY_CHANNEL_MAP[val] || TODAY_CHANNEL_MAP.other;
-  return `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 8px;"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
+  return `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 2px 6px; font-size: 0.65rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
 }
 
 function todaySlaBadge(minutesRemaining) {
   if (minutesRemaining === null || minutesRemaining === undefined) {
-    return `<span class="badge badge-neutral" style="display:inline-flex; align-items:center; gap:4px;"><i class="bi bi-clock-history"></i> Sem meta</span>`;
+    return `<span class="badge badge-neutral" style="display:inline-flex; align-items:center; gap:4px; padding: 2px 6px; font-size: 0.65rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"><i class="bi bi-clock-history"></i> -</span>`;
   }
   const late = minutesRemaining < 0;
   const absMinutes = Math.abs(minutesRemaining);
   const icon = late ? 'bi-alarm-fill' : 'bi-stopwatch-fill';
-  return `<span class="badge ${late ? 'badge-red' : 'badge-green'}" style="white-space:nowrap; display:inline-flex; align-items:center; gap:4px;"><i class="bi ${icon}"></i> ${late ? 'Atrasado ' : 'Em '}${formatDetailedDuration(absMinutes)}</span>`;
+  // Omitindo as palavras "Atrasado/Em" para ganhar espaço (a cor já indica a situação)
+  return `<span class="badge ${late ? 'badge-red' : 'badge-green'}" style="white-space:nowrap; display:inline-flex; align-items:center; gap:4px; padding: 2px 6px; font-size: 0.65rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"><i class="bi ${icon}"></i> ${formatDetailedDuration(absMinutes)}</span>`;
+}
+
+function rankTableRow(name, valueText, highlightColor = null) {
+  const style = highlightColor ? `color: ${highlightColor}; font-weight: 600;` : '';
+  return `<tr>
+            <td style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;" title="${name}">${name}</td>
+            <td style="text-align: right; ${style}">${valueText}</td>
+          </tr>`;
 }
 
 async function openKpiModal(kpi, endpointOverride = null, titleOverride = null) {
@@ -123,10 +133,8 @@ Screens.today = {
       </div>
     </div>
 
-    <!-- Adicionado min-width: 0 nas colunas para evitar o overflow do chart -->
-    <div class="chart-row-top" style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; margin-bottom: 24px;">
-      
-      <div class="chart-hourly panel" style="display: flex; flex-direction: column; min-width: 0;">
+    <div class="chart-row-top">
+      <div class="chart-hourly panel" style="display: flex; flex-direction: column; min-width: 0; margin-bottom: 0;">
         <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
           <h3 style="margin: 0;"><i class="bi bi-bar-chart"></i> Conversas por hora</h3>
         </div>
@@ -136,16 +144,17 @@ Screens.today = {
       </div>
       
       <div class="kpi-clickable-group" style="display: flex; flex-direction: column; gap: 16px; min-width: 0;">
-        
-        <div class="kpi-clickable card" data-kpi="created-today" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left;">
+        <div class="kpi-clickable card" data-kpi="created-today" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left; margin: 0;">
           <div class="kpi-header" style="margin-bottom: 4px;">
             <span class="card-label" style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Criadas hoje</span>
             <i class="bi bi-inbox" style="font-size: 1.2rem; color: var(--accent-blue);"></i>
           </div>
-          <span class="card-value" id="kpi-created-today" style="font-size: 2.2rem; line-height: 1; margin-bottom: 8px;">-</span>
+          <div style="display: flex; align-items: baseline; gap: 12px;">
+            <span class="card-value" id="kpi-created-today" style="font-size: 2.5rem;">-</span>
+          </div>
         </div>
-
-        <div class="kpi-clickable card" data-kpi="open" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left;">
+        
+        <div class="kpi-clickable card" data-kpi="open" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left; margin: 0;">
           <div class="kpi-header" style="margin-bottom: 4px;">
             <span class="card-label" style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Abertas</span>
             <i class="bi bi-envelope-open" style="font-size: 1.2rem; color: var(--accent-yellow);"></i>
@@ -156,8 +165,8 @@ Screens.today = {
           </div>
           <div id="kpi-open-bars" style="width: 100%; display: flex; flex-direction: column; gap: 6px;"></div>
         </div>
-
-        <div class="kpi-clickable kpi-alert card" data-kpi="unassigned" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left;">
+        
+        <div class="kpi-clickable kpi-alert card" data-kpi="unassigned" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left; margin: 0;">
           <div class="kpi-header" style="margin-bottom: 4px;">
             <span class="card-label" style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Não atribuídas</span>
             <i class="bi bi-exclamation-octagon" style="font-size: 1.2rem; color: var(--accent-red);"></i>
@@ -168,7 +177,6 @@ Screens.today = {
           </div>
           <div id="kpi-unassigned-bars" style="width: 100%; display: flex; flex-direction: column; gap: 6px;"></div>
         </div>
-
       </div>
     </div>
 
@@ -207,48 +215,42 @@ Screens.today = {
         <h3 style="margin: 0;"><i class="bi bi-diagram-3"></i> Detalhamento de Fila</h3>
       </div>
       
-      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 24px;">
-        <!-- Card Aguardando -->
-        <div class="card kpi-clickable" data-kpi="awaiting-agent" style="margin: 0; padding: 16px; border-color: rgba(41,163,255,0.3); background: linear-gradient(135deg, rgba(41,163,255,0.05), var(--panel) 60%);">
-          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-            <i class="bi bi-hourglass-split" style="font-size: 1.2rem; color: var(--accent-blue);"></i>
-            <span class="card-label" style="margin: 0; font-size: 0.85rem;">Aguardando Agente</span>
-          </div>
-          <span class="card-value" id="kpi-awaiting-agent" style="font-size: 2rem;">-</span>
+      <div class="grid-3-cols" style="margin-bottom: 0;">
+        <div class="card kpi-clickable" data-kpi="awaiting-agent" style="margin: 0; padding: 24px 16px; border-color: rgba(41,163,255,0.3); background: linear-gradient(135deg, rgba(41,163,255,0.05), var(--panel) 60%); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <i class="bi bi-hourglass-split" style="font-size: 1.8rem; color: var(--accent-blue); margin-bottom: 12px;"></i>
+          <span class="card-label" style="margin: 0 0 4px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">Aguardando Agente</span>
+          <span class="card-value" id="kpi-awaiting-agent" style="font-size: 2.5rem; line-height: 1;">-</span>
         </div>
 
-        <!-- Breakdown Prioridade -->
         <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px;">
           <span class="muted-text" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 12px;">Por Prioridade</span>
-          <div id="priority-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+          <div id="priority-list" style="display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start;"></div>
         </div>
 
-        <!-- Breakdown Etiqueta -->
         <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px;">
           <span class="muted-text" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 12px;">Por Etiqueta</span>
-          <div id="label-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 120px; overflow-y: auto;"></div>
+          <div id="label-list" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 160px; overflow-y: auto; padding-right: 4px; align-content: flex-start;"></div>
         </div>
       </div>
     </div>
 
-    <!-- Adicionado min-width: 0 nas colunas para evitar o overflow do chart -->
-    <div class="attention-assignees-row" style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-bottom: 24px;">
-      <div class="panel panel-attention" style="display: flex; flex-direction: column; grid-column: span 2; min-width: 0;">
+    <div class="attention-assignees-row">
+      <div class="panel panel-attention" style="display: flex; flex-direction: column; min-width: 0; margin-bottom: 0;">
         <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
           <h3 style="margin: 0;"><i class="bi bi-exclamation-triangle"></i> Precisam de Atenção</h3>
         </div>
-        <div class="table-responsive" style="flex: 1; max-height: 300px;">
-          <table id="attention-table">
+        <div class="table-responsive" style="flex: 1; max-height: 350px; overflow-x: hidden;">
+          <table id="attention-table" style="table-layout: fixed; width: 100%;">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Cliente</th>
-                <th>Assunto</th>
-                <th>Agente</th>
-                <th>Prioridade</th>
-                <th>Canal</th>
-                <th>SLA</th>
-                <th style="text-align: right;">Ação</th>
+                <th style="font-size: 0.7rem; width: 8%;">ID</th>
+                <th style="font-size: 0.7rem; width: 18%;">Cliente</th>
+                <th style="font-size: 0.7rem; width: 18%;">Assunto</th>
+                <th style="font-size: 0.7rem; width: 14%;">Agente</th>
+                <th style="font-size: 0.7rem; width: 11%;">Pr.</th>
+                <th style="font-size: 0.7rem; width: 13%;">Canal</th>
+                <th style="font-size: 0.7rem; width: 14%;">SLA</th>
+                <th style="text-align: right; font-size: 0.7rem; width: 4%;"></th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -256,21 +258,28 @@ Screens.today = {
         </div>
       </div>
       
-      <div style="display: flex; flex-direction: column; gap: 24px; min-width: 0;">
-        <div class="panel" style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+      <div style="display: flex; flex-direction: column; gap: 18px; min-width: 0;">
+        <div class="panel" style="display: flex; flex-direction: column; flex: 1; min-width: 0; margin-bottom: 0;">
           <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
             <h3 style="margin: 0;"><i class="bi bi-person-lines-fill"></i> Atribuições Hoje</h3>
           </div>
-          <div class="canvas-container" style="flex: 1; min-height: 150px; min-width: 0;">
-            <canvas id="chart-assignees"></canvas>
+          <div class="table-responsive" style="flex: 1; max-height: 250px;">
+            <table id="table-today-assignees" class="sortable">
+              <thead><tr><th data-sort="string">Agente</th><th data-sort="number" style="text-align: right;">Atribuídas</th></tr></thead>
+              <tbody></tbody>
+            </table>
           </div>
         </div>
-        <div class="panel" style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+        
+        <div class="panel" style="display: flex; flex-direction: column; flex: 1; min-width: 0; margin-bottom: 0;">
           <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
             <h3 style="margin: 0;"><i class="bi bi-trophy"></i> Resoluções Hoje</h3>
           </div>
-          <div class="canvas-container" style="flex: 1; min-height: 150px; min-width: 0;">
-            <canvas id="chart-top-solvers"></canvas>
+          <div class="table-responsive" style="flex: 1; max-height: 250px;">
+            <table id="table-today-solvers" class="sortable">
+              <thead><tr><th data-sort="string">Agente</th><th data-sort="number" style="text-align: right;">Resolvidas</th></tr></thead>
+              <tbody></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -323,28 +332,36 @@ Screens.today = {
     document.getElementById('kpi-unassigned').textContent = unassigned.length || 0;
     document.getElementById('kpi-awaiting-agent').textContent = awaitingAgent.length || 0;
 
-    const renderKpiRow = (label, total, color, onClick) => {
+    const renderKpiGridSquare = (label, total, color, onClick) => {
       const div = document.createElement('div');
-      div.className = 'kpi-clickable';
+      div.className = 'kpi-clickable card';
+      
+      div.style.width = '76px';
+      div.style.height = '76px';
+      div.style.flexShrink = '0';
+      
       div.style.display = 'flex';
-      div.style.flexDirection = 'row';
-      div.style.justifyContent = 'space-between';
+      div.style.flexDirection = 'column';
+      div.style.justifyContent = 'center';
       div.style.alignItems = 'center';
-      div.style.padding = '8px 12px';
-      div.style.borderRadius = '8px';
-      div.style.background = 'var(--panel)';
-      div.style.border = '1px solid var(--border)';
+      div.style.padding = '8px';
+      div.style.margin = '0';
+      div.style.gap = '6px';
+      div.style.textAlign = 'center';
       div.style.cursor = 'pointer';
-      div.innerHTML = `<div style="display:flex; align-items:center; gap: 8px; overflow: hidden;">
-                        <span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0; box-shadow: 0 0 4px ${color}80;"></span>
-                        <span style="font-weight: 500; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${label}">${label}</span>
-                       </div>
-                       <span style="font-size: 0.95rem; font-weight: 600; background: var(--bg); padding: 2px 8px; border-radius: 12px; border: 1px solid var(--border);">${total}</span>`;
+      
+      div.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%;">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background-color: ${color}; flex-shrink: 0; box-shadow: 0 0 4px ${color}80;"></span>
+          <span style="font-weight: 600; font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); text-transform: uppercase;" title="${label}">${label}</span>
+        </div>
+        <span style="font-size: 1.4rem; font-weight: 700; line-height: 1; color: var(--text);">${total}</span>`;
       div.onclick = onClick;
       return div;
     };
 
-    const prioMap = { 'urgent': 'Urgente', 'high': 'Alta', 'medium': 'Média', 'low': 'Baixa', 'none': 'Nenhuma' };
+    // Usando nomes cheios para o Grid Quadrado
+    const prioMapFull = { 'urgent': 'Urgente', 'high': 'Alta', 'medium': 'Média', 'low': 'Baixa', 'none': 'Nenhuma' };
     const prioColors = { 'urgent': '#ff5c5c', 'high': '#ff5c5c', 'medium': '#ffc247', 'low': '#34d399', 'none': '#9296b8' };
     const PRIORITY_ORDER = ['urgent', 'high', 'medium', 'low', 'none'];
 
@@ -352,8 +369,8 @@ Screens.today = {
     PRIORITY_ORDER.forEach(p => {
       const found = (statusBreakdown.priority || []).find(r => r.priority === p);
       if (found && found.total > 0) {
-        const el = renderKpiRow(prioMap[p], found.total, prioColors[p], 
-            () => openKpiModal('breakdown', `/monitor/api/today/conversations/priority/${p}`, `Prioridade: ${prioMap[p]}`));
+        const el = renderKpiGridSquare(prioMapFull[p], found.total, prioColors[p], 
+            () => openKpiModal('breakdown', `/monitor/api/today/conversations/priority/${p}`, `Prioridade: ${prioMapFull[p]}`));
         priorityContainer.appendChild(el);
       }
     });
@@ -365,7 +382,7 @@ Screens.today = {
     } else {
       statusBreakdown.labels.forEach(l => {
         const color = getLabelColor(l.label);
-        const el = renderKpiRow(l.label, l.total, color, 
+        const el = renderKpiGridSquare(l.label, l.total, color, 
             () => openKpiModal('breakdown', `/monitor/api/today/conversations/label/${encodeURIComponent(l.label)}`, `Etiqueta: ${l.label}`));
         labelContainer.appendChild(el);
       });
@@ -383,7 +400,6 @@ Screens.today = {
       cardSlaMet.style.color = '';
     }
 
-    // Função Substituta para o Texto Flutuante -> Barras Comparativas Inlines
     const renderCompareBars = (elId, current, previous, themeColor) => {
       const badgeEl = document.getElementById(`${elId}-badge`);
       const barsEl = document.getElementById(`${elId}-bars`);
@@ -395,17 +411,15 @@ Screens.today = {
       const prevPct = (previous / maxVal) * 100;
       const currPct = (current / maxVal) * 100;
       
-      // Monta a Etiqueta
       if (diff === 0) {
         badgeEl.innerHTML = `<span class="badge badge-neutral" style="font-size: 0.65rem; text-transform: uppercase;">= Igual</span>`;
       } else {
-        const isGood = diff < 0; // Para filas (abertas/não atribuídas), redução é bom
+        const isGood = diff < 0; 
         const colorClass = isGood ? 'badge-green' : 'badge-red';
         const icon = isGood ? 'bi-graph-down-arrow' : 'bi-graph-up-arrow';
         badgeEl.innerHTML = `<span class="badge ${colorClass}" style="font-size: 0.65rem;"><i class="bi ${icon}"></i> ${Math.abs(diff)} vs Sem. Pass.</span>`;
       }
       
-      // Monta as Barras (Bullet Chart)
       barsEl.innerHTML = `
         <div style="display: flex; align-items: center; gap: 8px;">
            <span style="font-size: 0.65rem; color: var(--muted); width: 30px; text-align: right;">${previous}</span>
@@ -441,7 +455,6 @@ Screens.today = {
       };
     });
 
-    // Gráfico de Barras Ajustado
     renderChart('chart-hourly', {
       type: 'bar',
       data: {
@@ -480,44 +493,31 @@ Screens.today = {
         const url = `${chatwootBase}/app/accounts/${accountId}/search?q=${r.conversation_id}`;
         
         return `<tr>
-          <td style="font-weight: 500;">${r.conversation_id}</td>
-          <td>${r.contact_name ?? '-'}</td>
-          <td>${r.subject ?? '-'}</td>
-          <td>${r.assignee_name ?? '-'}</td>
-          <td>${todayPriorityBadge(r.priority)}</td>
-          <td>${todayChannelBadge(r.channel)}</td>
-          <td>${todaySlaBadge(r.minutes_remaining)}</td>
-          <td style="text-align: right;"><button class="topbar-btn" style="padding: 4px 8px;" data-tooltip="Visualizar" onclick="window.open('${url}', '_blank')"><i class="bi bi-box-arrow-up-right" style="font-size: 0.9rem;"></i></button></td>
+          <td style="font-weight: 600; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.conversation_id}</td>
+          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem;" title="${r.contact_name ?? '-'}">${r.contact_name ?? '-'}</td>
+          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem;" title="${r.subject ?? '-'}">${r.subject ?? '-'}</td>
+          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem;" title="${r.assignee_name ?? '-'}">${r.assignee_name ?? '-'}</td>
+          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${todayPriorityBadge(r.priority)}</td>
+          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${todayChannelBadge(r.channel)}</td>
+          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${todaySlaBadge(r.minutes_remaining)}</td>
+          <td style="text-align: right; padding: 4px;">
+            <button class="topbar-btn" style="padding: 4px 6px; display: inline-flex;" data-tooltip="Visualizar" onclick="window.open('${url}', '_blank')">
+              <i class="bi bi-box-arrow-up-right" style="font-size: 0.8rem;"></i>
+            </button>
+          </td>
         </tr>`;
       }).join('');
     }
 
-    renderChart('chart-assignees', {
-      type: 'bar',
-      data: { labels: assignees.map(r => r.assignee_name), datasets: [{ label: 'Conversas', data: assignees.map(r => r.total), backgroundColor: '#29a3ff', borderRadius: { topRight: 4, bottomRight: 4, topLeft: 0, bottomLeft: 0 }, barPercentage: 0.6, categoryPercentage: 0.8 }] },
-      options: {
-        indexAxis: 'y',
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false }, ticks: { stepSize: 1 } },
-          y: { grid: { display: false, drawBorder: false } }
-        }
-      },
-    });
+    const assigneesHtml = assignees.length > 0 
+      ? assignees.sort((a,b) => b.total - a.total).map(a => rankTableRow(a.assignee_name, a.total, 'var(--accent-blue)')).join('')
+      : '<tr><td colspan="2"><div class="empty-state" style="padding: 16px;"><i class="bi bi-inbox" style="font-size: 1.2rem; margin-bottom: 4px;"></i><span>Sem dados</span></div></td></tr>';
+    document.querySelector('#table-today-assignees tbody').innerHTML = assigneesHtml;
 
-    renderChart('chart-top-solvers', {
-      type: 'bar',
-      data: { labels: solvers.map(r => r.assignee_name), datasets: [{ label: 'Resolvidas', data: solvers.map(r => r.resolved_count), backgroundColor: '#34d399', borderRadius: { topRight: 4, bottomRight: 4, topLeft: 0, bottomLeft: 0 }, barPercentage: 0.6, categoryPercentage: 0.8 }] },
-      options: {
-        indexAxis: 'y',
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false }, ticks: { stepSize: 1 } },
-          y: { grid: { display: false, drawBorder: false } }
-        }
-      },
-    });
+    const solversHtml = solvers.length > 0
+      ? solvers.sort((a,b) => b.resolved_count - a.resolved_count).map(s => rankTableRow(s.assignee_name, s.resolved_count, 'var(--accent-green)')).join('')
+      : '<tr><td colspan="2"><div class="empty-state" style="padding: 16px;"><i class="bi bi-inbox" style="font-size: 1.2rem; margin-bottom: 4px;"></i><span>Sem dados</span></div></td></tr>';
+    document.querySelector('#table-today-solvers tbody').innerHTML = solversHtml;
+
   },
 };

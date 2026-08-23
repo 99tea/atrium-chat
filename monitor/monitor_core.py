@@ -22,16 +22,13 @@ CREATE TABLE IF NOT EXISTS monitor.conversation_snapshot (
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS assignee_name TEXT;
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS priority TEXT;
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS subject TEXT;
-ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS assignee_name TEXT;
-ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS priority TEXT;
-ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS subject TEXT;
-ALTER TABLE monitor.conversation_events ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT false;
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS cd_cliente TEXT;
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS razao_social TEXT;
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS regime_tributario TEXT;
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS status_contrato TEXT;
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS demanda_avulsa BOOLEAN;
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS excluded_from_metrics BOOLEAN DEFAULT false;
+ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS account_id BIGINT;
 
 CREATE TABLE IF NOT EXISTS monitor.conversation_events (
     id BIGSERIAL PRIMARY KEY,
@@ -44,36 +41,48 @@ CREATE TABLE IF NOT EXISTS monitor.conversation_events (
     occurred_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE monitor.conversation_events ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT false;
+ALTER TABLE monitor.conversation_events ADD COLUMN IF NOT EXISTS account_id BIGINT;
+
+CREATE INDEX IF NOT EXISTS idx_snapshot_account ON monitor.conversation_snapshot(account_id);
+CREATE INDEX IF NOT EXISTS idx_events_account ON monitor.conversation_events(account_id);
+CREATE INDEX IF NOT EXISTS idx_events_conv_account ON monitor.conversation_events(conversation_id, account_id);
+
 CREATE TABLE IF NOT EXISTS monitor.sla_targets (
-    team_id INT PRIMARY KEY,
+    account_id BIGINT NOT NULL,
+    team_id INT NOT NULL,
     first_response_minutes INT NOT NULL,
-    resolution_minutes INT NOT NULL
+    resolution_minutes INT NOT NULL,
+    PRIMARY KEY (account_id, team_id)
 );
 
 CREATE TABLE IF NOT EXISTS monitor.sla_priority_targets (
-    priority TEXT PRIMARY KEY,
+    account_id BIGINT NOT NULL,
+    priority TEXT NOT NULL,
     first_response_minutes INT NOT NULL,
-    resolution_minutes INT NOT NULL
+    resolution_minutes INT NOT NULL,
+    PRIMARY KEY (account_id, priority)
 );
 
 CREATE TABLE IF NOT EXISTS monitor.settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
+    account_id BIGINT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (account_id, key)
 );
 
 CREATE TABLE IF NOT EXISTS monitor.teams (
-    team_id INT PRIMARY KEY,
-    team_name TEXT NOT NULL
+    account_id BIGINT NOT NULL,
+    team_id INT NOT NULL,
+    team_name TEXT NOT NULL,
+    PRIMARY KEY (account_id, team_id)
 );
 
-INSERT INTO monitor.teams (team_id, team_name) VALUES
-    (1, 'Dev'), (2, 'Fiscal'), (3, 'Departamento Pessoal'), (4, 'Financeiro'),
-    (5, 'Contábil'), (7, 'Comercial'), (8, 'Outros'), (9, 'Triagem')
-ON CONFLICT (team_id) DO NOTHING;
-
 CREATE TABLE IF NOT EXISTS monitor.label_colors (
-    label TEXT PRIMARY KEY,
-    color TEXT NOT NULL
+    account_id BIGINT NOT NULL,
+    label TEXT NOT NULL,
+    color TEXT NOT NULL,
+    PRIMARY KEY (account_id, label)
 );
 
 CREATE TABLE IF NOT EXISTS monitor.user_tasks (
@@ -83,6 +92,8 @@ CREATE TABLE IF NOT EXISTS monitor.user_tasks (
     done BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE monitor.user_tasks ADD COLUMN IF NOT EXISTS account_id BIGINT;
 
 CREATE TABLE IF NOT EXISTS monitor.bug_reports (
     id BIGSERIAL PRIMARY KEY,
@@ -94,17 +105,26 @@ CREATE TABLE IF NOT EXISTS monitor.bug_reports (
     status TEXT NOT NULL DEFAULT 'novo',
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE monitor.bug_reports ADD COLUMN IF NOT EXISTS account_id BIGINT;
 """
 
 DEFAULT_LABEL_COLOR = "#9296b8"
 
-async def get_cancellation_label(conn) -> str:
-    row = await conn.fetchrow("SELECT value FROM monitor.settings WHERE key = 'cancellation_label'")
+
+async def get_cancellation_label(conn, account_id: int) -> str:
+    row = await conn.fetchrow(
+        "SELECT value FROM monitor.settings WHERE account_id = $1 AND key = 'cancellation_label'",
+        account_id,
+    )
     return row["value"] if row else "cancelado"
 
 
-async def get_team_names(conn) -> dict:
-    rows = await conn.fetch("SELECT team_id, team_name FROM monitor.teams")
+async def get_team_names(conn, account_id: int) -> dict:
+    rows = await conn.fetch(
+        "SELECT team_id, team_name FROM monitor.teams WHERE account_id = $1",
+        account_id,
+    )
     return {r["team_id"]: r["team_name"] for r in rows}
 
 
@@ -127,9 +147,10 @@ def to_ts(value) -> datetime:
         return datetime.now(tz=timezone.utc)
 
 
-async def get_inbox_channel_map(conn):
+async def get_inbox_channel_map(conn, account_id: int):
     rows = await conn.fetch(
-        "SELECT key, value FROM monitor.settings WHERE key IN ('whatsapp_inbox_ids', 'email_inbox_ids')"
+        "SELECT key, value FROM monitor.settings WHERE account_id = $1 AND key IN ('whatsapp_inbox_ids', 'email_inbox_ids')",
+        account_id,
     )
     settings_map = {r["key"]: r["value"] for r in rows}
 
@@ -147,10 +168,23 @@ def resolve_channel(inbox_id, whatsapp_ids, email_ids):
     return "other"
 
 
+def extract_account_id(data: dict) -> int | None:
+    account = data.get("account") or {}
+    account_id = account.get("id")
+    if account_id is None:
+        print(f"[monitor_webhook] WARNING payload sem account.id - event={data.get('event')}")
+    return account_id
+
+
 async def handle_conversation_event(data: dict, pool):
     conversation_id = data.get("id")
     if not conversation_id:
         return
+    account_id = extract_account_id(data)
+    if account_id is None:
+        print(f"[monitor_webhook] ignorando conversation_id={conversation_id} - account_id ausente no payload")
+        return
+
     inbox_id = data.get("inbox_id")
     status = data.get("status")
     meta = data.get("meta") or {}
@@ -176,7 +210,7 @@ async def handle_conversation_event(data: dict, pool):
     labels = data.get("labels") or []
 
     async with pool.acquire() as conn:
-        cancellation_label = await get_cancellation_label(conn)
+        cancellation_label = await get_cancellation_label(conn, account_id)
         excluded_from_metrics = status == "resolved" and cancellation_label in labels
 
         snap = await conn.fetchrow(
@@ -186,46 +220,46 @@ async def handle_conversation_event(data: dict, pool):
 
         if snap is None:
             await conn.execute(
-                "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, event_type, to_value, occurred_at) "
-                "VALUES ($1,$2,'created',$3,$4)",
-                conversation_id, inbox_id, status, occurred_at,
+                "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, account_id, event_type, to_value, occurred_at) "
+                "VALUES ($1,$2,$3,'created',$4,$5)",
+                conversation_id, inbox_id, account_id, status, occurred_at,
             )
         else:
             if snap["status"] != status:
                 await conn.execute(
-                    "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, event_type, from_value, to_value, occurred_at) "
-                    "VALUES ($1,$2,'status_changed',$3,$4,$5)",
-                    conversation_id, inbox_id, snap["status"], status, occurred_at,
+                    "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, account_id, event_type, from_value, to_value, occurred_at) "
+                    "VALUES ($1,$2,$3,'status_changed',$4,$5,$6)",
+                    conversation_id, inbox_id, account_id, snap["status"], status, occurred_at,
                 )
             if snap["assignee_id"] != assignee_id:
                 await conn.execute(
-                    "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, event_type, from_value, to_value, agent_id, occurred_at) "
-                    "VALUES ($1,$2,'assignee_changed',$3,$4,$5,$6)",
-                    conversation_id, inbox_id, str(snap["assignee_id"]), str(assignee_id), assignee_id, occurred_at,
+                    "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, account_id, event_type, from_value, to_value, agent_id, occurred_at) "
+                    "VALUES ($1,$2,$3,'assignee_changed',$4,$5,$6,$7)",
+                    conversation_id, inbox_id, account_id, str(snap["assignee_id"]), str(assignee_id), assignee_id, occurred_at,
                 )
             if snap["team_id"] != team_id:
                 await conn.execute(
-                    "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, event_type, from_value, to_value, occurred_at) "
-                    "VALUES ($1,$2,'team_changed',$3,$4,$5)",
-                    conversation_id, inbox_id, str(snap["team_id"]), str(team_id), occurred_at,
+                    "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, account_id, event_type, from_value, to_value, occurred_at) "
+                    "VALUES ($1,$2,$3,'team_changed',$4,$5,$6)",
+                    conversation_id, inbox_id, account_id, str(snap["team_id"]), str(team_id), occurred_at,
                 )
 
         await conn.execute(
                 """
                 INSERT INTO monitor.conversation_snapshot
-                    (conversation_id, inbox_id, status, assignee_id, assignee_name, team_id,
+                    (conversation_id, inbox_id, account_id, status, assignee_id, assignee_name, team_id,
                      company_name, contact_id, contact_name, priority, subject, labels, updated_at,
                      cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
                      excluded_from_metrics)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
                 ON CONFLICT (conversation_id) DO UPDATE SET
-                    inbox_id = $2, status = $3, assignee_id = $4, assignee_name = $5, team_id = $6,
-                    company_name = $7, contact_id = $8, contact_name = $9, priority = $10,
-                    subject = $11, labels = $12, updated_at = $13,
-                    cd_cliente = $14, razao_social = $15, regime_tributario = $16, status_contrato = $17,
-                    demanda_avulsa = $18, excluded_from_metrics = $19
+                    inbox_id = $2, account_id = $3, status = $4, assignee_id = $5, assignee_name = $6, team_id = $7,
+                    company_name = $8, contact_id = $9, contact_name = $10, priority = $11,
+                    subject = $12, labels = $13, updated_at = $14,
+                    cd_cliente = $15, razao_social = $16, regime_tributario = $17, status_contrato = $18,
+                    demanda_avulsa = $19, excluded_from_metrics = $20
                 """,
-                conversation_id, inbox_id, status, assignee_id, assignee_name, team_id,
+                conversation_id, inbox_id, account_id, status, assignee_id, assignee_name, team_id,
                 company_name, contact_id, contact_name, priority, subject, labels, occurred_at,
                 cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
                 excluded_from_metrics,
@@ -237,6 +271,11 @@ async def handle_message_event(data: dict, pool):
     conversation_id = conv.get("id")
     if not conversation_id:
         return
+    account_id = extract_account_id(data)
+    if account_id is None:
+        print(f"[monitor_webhook] ignorando message em conversation_id={conversation_id} - account_id ausente no payload")
+        return
+
     inbox_id = conv.get("inbox_id")
     message_type = data.get("message_type")
     sender = data.get("sender") or {}
@@ -246,9 +285,9 @@ async def handle_message_event(data: dict, pool):
 
     async with pool.acquire() as conn:
         await conn.execute(
-            "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, event_type, to_value, agent_id, occurred_at, is_private) "
-            "VALUES ($1,$2,'message',$3,$4,$5,$6)",
-            conversation_id, inbox_id, message_type, agent_id, occurred_at, is_private,
+            "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, account_id, event_type, to_value, agent_id, occurred_at, is_private) "
+            "VALUES ($1,$2,$3,'message',$4,$5,$6,$7)",
+            conversation_id, inbox_id, account_id, message_type, agent_id, occurred_at, is_private,
         )
 
 

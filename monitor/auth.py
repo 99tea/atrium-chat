@@ -4,12 +4,10 @@ import httpx
 import os
 
 router = APIRouter()
-
 SECRET_KEY = os.environ["MONITOR_SECRET_KEY"]
 serializer = URLSafeTimedSerializer(SECRET_KEY)
 COOKIE_NAME = "monitor_session"
 CHATWOOT_URL = os.environ["CHATWOOT_URL"]
-
 DEV_USER_IDS = {
     int(x.strip()) for x in os.environ.get("DEV_USER_IDS", "").split(",") if x.strip().isdigit()
 }
@@ -35,6 +33,13 @@ def require_developer(user=Depends(get_current_user)):
     if not user.get("is_developer"):
         raise HTTPException(403, "forbidden")
     return user
+
+
+def get_account_id(user=Depends(get_current_user)) -> int:
+    account_id = user.get("account_id")
+    if account_id is None:
+        raise HTTPException(403, "usuário sem account_id válido na sessão")
+    return account_id
 
 
 @router.post("/monitor/api/login")

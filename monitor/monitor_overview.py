@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Request, Depends
-from auth import require_admin
+from auth import require_admin, get_account_id
 from monitor_core import _validate_days_extended, get_inbox_channel_map, resolve_channel
 
 router = APIRouter()
 
 
 @router.get("/monitor/api/overview")
-async def overview(request: Request, days: int = 30, user=Depends(require_admin)):
+async def overview(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -20,19 +20,19 @@ async def overview(request: Request, days: int = 30, user=Depends(require_admin)
                 ) AS total_cancelled
             FROM monitor.conversation_events e
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
-            WHERE e.occurred_at >= now() - make_interval(days => $1)
+            WHERE e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
             """,
-            days,
+            days, account_id,
         )
     return dict(row) if row else {}
 
 
 @router.get("/monitor/api/overview/daily")
-async def overview_daily(request: Request, days: int = 30, user=Depends(require_admin)):
+async def overview_daily(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
+        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT date_trunc('day', occurred_at AT TIME ZONE 'America/Sao_Paulo') AS day,
@@ -40,10 +40,10 @@ async def overview_daily(request: Request, days: int = 30, user=Depends(require_
                 count(*) FILTER (WHERE event_type = 'created') AS created,
                 count(*) FILTER (WHERE event_type = 'status_changed' AND to_value = 'resolved') AS resolved
             FROM monitor.conversation_events
-            WHERE occurred_at >= now() - make_interval(days => $1)
+            WHERE account_id = $2 AND occurred_at >= now() - make_interval(days => $1)
             GROUP BY day, inbox_id ORDER BY day
             """,
-            days,
+            days, account_id,
         )
 
     daily = {}
@@ -59,7 +59,7 @@ async def overview_daily(request: Request, days: int = 30, user=Depends(require_
 
 
 @router.get("/monitor/api/overview/hourly")
-async def overview_hourly(request: Request, days: int = 30, user=Depends(require_admin)):
+async def overview_hourly(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -68,16 +68,16 @@ async def overview_hourly(request: Request, days: int = 30, user=Depends(require
             SELECT EXTRACT(hour FROM occurred_at AT TIME ZONE 'America/Sao_Paulo')::int AS hour,
                 count(*) AS total
             FROM monitor.conversation_events
-            WHERE event_type = 'created' AND occurred_at >= now() - make_interval(days => $1)
+            WHERE event_type = 'created' AND account_id = $2 AND occurred_at >= now() - make_interval(days => $1)
             GROUP BY hour ORDER BY hour
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/overview/weekday")
-async def overview_weekday(request: Request, days: int = 30, user=Depends(require_admin)):
+async def overview_weekday(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -86,16 +86,16 @@ async def overview_weekday(request: Request, days: int = 30, user=Depends(requir
             SELECT EXTRACT(dow FROM occurred_at AT TIME ZONE 'America/Sao_Paulo')::int AS weekday,
                 count(*) AS total
             FROM monitor.conversation_events
-            WHERE event_type = 'created' AND occurred_at >= now() - make_interval(days => $1)
+            WHERE event_type = 'created' AND account_id = $2 AND occurred_at >= now() - make_interval(days => $1)
             GROUP BY weekday ORDER BY weekday
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/overview/priority-distribution")
-async def overview_priority_distribution(request: Request, days: int = 30, user=Depends(require_admin)):
+async def overview_priority_distribution(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -104,28 +104,28 @@ async def overview_priority_distribution(request: Request, days: int = 30, user=
             SELECT COALESCE(cs.priority, 'none') AS priority, count(*) AS total
             FROM monitor.conversation_events e
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
-            WHERE e.event_type = 'created' AND e.occurred_at >= now() - make_interval(days => $1)
+            WHERE e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
             GROUP BY priority
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/overview/channel-distribution")
-async def overview_channel_distribution(request: Request, days: int = 30, user=Depends(require_admin)):
+async def overview_channel_distribution(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn)
+        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT inbox_id, count(*) AS total
             FROM monitor.conversation_events
-            WHERE event_type = 'created' AND occurred_at >= now() - make_interval(days => $1)
+            WHERE event_type = 'created' AND account_id = $2 AND occurred_at >= now() - make_interval(days => $1)
             GROUP BY inbox_id
             """,
-            days,
+            days, account_id,
         )
 
     by_channel = {"whatsapp": 0, "email": 0, "other": 0}
@@ -136,7 +136,7 @@ async def overview_channel_distribution(request: Request, days: int = 30, user=D
 
 
 @router.get("/monitor/api/overview/company-distribution")
-async def overview_company_distribution(request: Request, days: int = 30, user=Depends(require_admin)):
+async def overview_company_distribution(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -146,19 +146,20 @@ async def overview_company_distribution(request: Request, days: int = 30, user=D
             FROM monitor.conversation_events e
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
             WHERE e.event_type = 'created'
+              AND e.account_id = $2
               AND e.occurred_at >= now() - make_interval(days => $1)
               AND cs.company_name IS NOT NULL AND cs.company_name <> ''
             GROUP BY cs.company_name
             ORDER BY total DESC
             LIMIT 10
             """,
-            days,
+            days, account_id,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/overview/reopen-rate")
-async def overview_reopen_rate(request: Request, days: int = 30, user=Depends(require_admin)):
+async def overview_reopen_rate(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -169,32 +170,35 @@ async def overview_reopen_rate(request: Request, days: int = 30, user=Depends(re
             WHERE event_type = 'status_changed'
               AND from_value = 'resolved'
               AND to_value IN ('open', 'pending')
+              AND account_id = $2
               AND occurred_at >= now() - make_interval(days => $1)
             """,
-            days,
+            days, account_id,
         )
     return dict(row) if row else {"reopened": 0}
 
 
 @router.get("/monitor/api/overview/status-breakdown")
-async def overview_status_breakdown(request: Request, user=Depends(require_admin)):
+async def overview_status_breakdown(request: Request, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         priority_rows = await conn.fetch(
             """
             SELECT COALESCE(priority, 'none') AS priority, count(*) AS total
             FROM monitor.conversation_snapshot
-            WHERE status IN ('open', 'pending')
+            WHERE account_id = $1 AND status IN ('open', 'pending')
             GROUP BY priority
-            """
+            """,
+            account_id,
         )
         label_rows = await conn.fetch(
             """
             SELECT label, count(*) AS total
             FROM monitor.conversation_snapshot cs
             LEFT JOIN LATERAL unnest(COALESCE(cs.labels, '{}')) AS label ON true
-            WHERE cs.status IN ('open', 'pending') AND label IS NOT NULL
+            WHERE cs.account_id = $1 AND cs.status IN ('open', 'pending') AND label IS NOT NULL
             GROUP BY label ORDER BY total DESC
-            """
+            """,
+            account_id,
         )
     return {"priority": [dict(r) for r in priority_rows], "labels": [dict(r) for r in label_rows]}

@@ -308,7 +308,7 @@ Screens.overview = {
     <div class="grid-3-cols">
       <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
         <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-building"></i> Empresas Ofensoras</h3>
+          <h3 style="margin: 0;"><i class="bi bi-building"></i> Empresas por Volume</h3>
         </div>
         <div class="table-responsive" style="flex: 1; max-height: 350px;">
           <table class="sortable">
