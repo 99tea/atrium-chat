@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #141517;
+    --panel: #1c1d20;
+    --panel-light: #2b2c31;
+    --accent: #8f161b;
+    --accent-hover: #b01a21;
+    --accent-yellow: #ffc247;
+    --accent-green: #34d399;
+    --accent-red: #ff5c5c;
+    --error: #ff5c5c;
+    --text: #eceefc;
+    --muted: #9296b8;
+    --border: #2b2c31;
+    --input-bg: rgba(0, 0, 0, 0.2);
+  }
+
+  body.light-theme {
+    --bg: #f4f5f7;
+    --panel: #ffffff;
+    --panel-light: #f0f2f5;
+    --accent: #8f161b;
+    --accent-hover: #b01a21;
+    --accent-yellow: #f59e0b;
+    --accent-green: #10b981;
+    --accent-red: #ef4444;
+    --error: #ef4444;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --input-bg: #e5e7eb;
+  }
+
+  *, ::before, ::after {
+    border-color: var(--border);
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background-color: var(--bg); }
+  ::-webkit-scrollbar-thumb { background-color: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--muted); }
+}
+
+
+@layer utilities {
+  .table-responsive::-webkit-scrollbar { width: 6px; height: 6px; }
+  
+  [data-tooltip] { position: relative; cursor: help; }
+  [data-tooltip]::after {
+    content: attr(data-tooltip);
+    @apply absolute left-1/2 -translate-x-1/2 bg-panel-light text-text px-2.5 py-1.5 rounded-md text-xs whitespace-nowrap opacity-0 pointer-events-none transition-opacity duration-200 shadow-md border border-border z-[9999];
+    bottom: 125%;
+  }
+  [data-tooltip]:hover::after { opacity: 1; }
+
+  /* Setas de Ordenação */
+  table.sortable th[data-sort] { @apply cursor-pointer select-none hover:text-text transition-colors; }
+  table.sortable th[data-sort].sorted-asc::after { content: ' ▲'; @apply text-[0.75em]; }
+  table.sortable th[data-sort].sorted-desc::after { content: ' ▼'; @apply text-[0.75em]; }
+
+  /* TV Mode */
+  body.tv-mode #topbar,
+  body.tv-mode #sidebar,
+  body.tv-mode .filter-bar { display: none !important; }
+  body.tv-mode #content { padding: 16px 24px !important; }
+
+  /* Ocultar barras de rolagem feias, mantendo a funcionalidade (Req 4) */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Efeitos Cyberpunk sutis (Req 9) */
+  .glow-border { border-color: rgba(143, 22, 27, 0.4); box-shadow: 0 0 10px rgba(143, 22, 27, 0.15); }
+  .glow-text { text-shadow: 0 0 8px rgba(143, 22, 27, 0.4); }
+  
+  /* Controle de painéis minimizáveis (Req 8) */
+  .panel-collapsed .panel-content { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; margin: 0; overflow: hidden; border-top-width: 0; }
+  .panel-content { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); max-height: 2000px; opacity: 1; }
+  
+  /* Ajuste de tabela para evitar quebra em telas menores */
+  .table-wrapper { @apply w-full overflow-x-auto no-scrollbar; }
+  
+}
+
+/* Sidebar Scrollbar Invisível */
+#sidebar::-webkit-scrollbar { display: none; }
+#sidebar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Tooltips Inteligentes para a Sidebar */
+#sidebar.collapsed [data-tooltip]::after {
+  left: 100% !important;
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
+  margin-left: 10px;
+}

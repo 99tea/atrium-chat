@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, Depends
 from datetime import datetime, timezone
 from auth import get_current_user, get_account_id
-from monitor_core import _validate_days_extended, get_inbox_channel_map, resolve_channel
+from monitor_core import _validate_days_extended, get_channels, resolve_channel
 
 router = APIRouter()
 
@@ -10,7 +10,7 @@ router = APIRouter()
 async def my_status(request: Request, user=Depends(get_current_user), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT cs.conversation_id, cs.inbox_id, cs.status, cs.priority, cs.subject,
@@ -31,7 +31,7 @@ async def my_status(request: Request, user=Depends(get_current_user), account_id
     items = []
     for r in rows:
         d = dict(r)
-        d["channel"] = resolve_channel(d["inbox_id"], whatsapp_ids, email_ids)
+        d["channel"] = resolve_channel(d["inbox_id"], channels)
         d["minutes_remaining"] = (
             None if d["sla_deadline"] is None
             else (d["sla_deadline"] - datetime.now(timezone.utc)).total_seconds() / 60

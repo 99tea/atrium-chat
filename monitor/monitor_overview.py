@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Depends
 from auth import require_admin, get_account_id
-from monitor_core import _validate_days_extended, get_inbox_channel_map, resolve_channel
+from monitor_core import _validate_days_extended, get_channels, resolve_channel
 
 router = APIRouter()
 
@@ -32,7 +32,7 @@ async def overview_daily(request: Request, days: int = 30, user=Depends(require_
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT date_trunc('day', occurred_at AT TIME ZONE 'America/Sao_Paulo') AS day,
@@ -46,12 +46,13 @@ async def overview_daily(request: Request, days: int = 30, user=Depends(require_
             days, account_id,
         )
 
+    channel_keys = [c["channel_key"] for c in channels] + ["other"]
     daily = {}
     for r in rows:
         bucket = daily.setdefault(r["day"], {
-            "day": r["day"], "created_whatsapp": 0, "created_email": 0, "created_other": 0, "resolved": 0
+            "day": r["day"], **{f"created_{k}": 0 for k in channel_keys}, "resolved": 0
         })
-        channel = resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)
+        channel = resolve_channel(r["inbox_id"], channels)
         bucket[f"created_{channel}"] += r["created"]
         bucket["resolved"] += r["resolved"]
 
@@ -117,7 +118,7 @@ async def overview_channel_distribution(request: Request, days: int = 30, user=D
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT inbox_id, count(*) AS total
@@ -128,9 +129,10 @@ async def overview_channel_distribution(request: Request, days: int = 30, user=D
             days, account_id,
         )
 
-    by_channel = {"whatsapp": 0, "email": 0, "other": 0}
+    by_channel = {c["channel_key"]: 0 for c in channels}
+    by_channel["other"] = 0
     for r in rows:
-        channel = resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)
+        channel = resolve_channel(r["inbox_id"], channels)
         by_channel[channel] += r["total"]
     return by_channel
 

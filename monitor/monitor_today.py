@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
 from auth import require_admin, get_account_id
-from monitor_core import get_inbox_channel_map, resolve_channel
+from monitor_core import get_channels, resolve_channel
 
 router = APIRouter()
 
@@ -9,7 +9,7 @@ router = APIRouter()
 async def today_hourly(request: Request, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT date_trunc('hour', occurred_at AT TIME ZONE 'America/Sao_Paulo') AS hour,
@@ -24,12 +24,13 @@ async def today_hourly(request: Request, user=Depends(require_admin), account_id
             account_id,
         )
 
+    channel_keys = [c["channel_key"] for c in channels] + ["other"]
     hourly = {}
     for r in rows:
         bucket = hourly.setdefault(r["hour"], {
-            "hour": r["hour"], "created_whatsapp": 0, "created_email": 0, "created_other": 0, "resolved": 0
+            "hour": r["hour"], **{f"created_{k}": 0 for k in channel_keys}, "resolved": 0
         })
-        channel = resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)
+        channel = resolve_channel(r["inbox_id"], channels)
         bucket[f"created_{channel}"] += r["created"]
         bucket["resolved"] += r["resolved"]
 
@@ -40,7 +41,7 @@ async def today_hourly(request: Request, user=Depends(require_admin), account_id
 async def today_conv_priority(priority: str, request: Request, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT cs.conversation_id, cs.inbox_id, cs.contact_name, cs.assignee_name, cs.priority, cs.status,
@@ -56,14 +57,14 @@ async def today_conv_priority(priority: str, request: Request, user=Depends(requ
             """,
             priority, account_id,
         )
-    return [{**dict(r), "channel": resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)} for r in rows]
+    return [{**dict(r), "channel": resolve_channel(r["inbox_id"], channels)} for r in rows]
 
 
 @router.get("/monitor/api/today/conversations/label/{label}")
 async def today_conv_label(label: str, request: Request, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT cs.conversation_id, cs.inbox_id, cs.contact_name, cs.assignee_name, cs.priority, cs.status,
@@ -79,7 +80,7 @@ async def today_conv_label(label: str, request: Request, user=Depends(require_ad
             """,
             label, account_id,
         )
-    return [{**dict(r), "channel": resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)} for r in rows]
+    return [{**dict(r), "channel": resolve_channel(r["inbox_id"], channels)} for r in rows]
 
 
 @router.get("/monitor/api/today/kpi/{kpi}")
@@ -151,9 +152,9 @@ async def today_kpi(kpi: str, request: Request, user=Depends(require_admin), acc
     if kpi not in queries:
         raise HTTPException(404, "kpi desconhecido")
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(queries[kpi], account_id)
-    return [{**dict(r), "channel": resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)} for r in rows]
+    return [{**dict(r), "channel": resolve_channel(r["inbox_id"], channels)} for r in rows]
 
 
 @router.get("/monitor/api/today/first-response")
@@ -239,7 +240,7 @@ async def today_comparison(request: Request, user=Depends(require_admin), accoun
 async def today_attention(request: Request, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT s.conversation_id, s.inbox_id, s.contact_name, s.subject, s.priority, s.assignee_name,
@@ -255,7 +256,7 @@ async def today_attention(request: Request, user=Depends(require_admin), account
             """,
             account_id,
         )
-    return [{**dict(r), "channel": resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)} for r in rows]
+    return [{**dict(r), "channel": resolve_channel(r["inbox_id"], channels)} for r in rows]
 
 
 @router.get("/monitor/api/today/assignees")

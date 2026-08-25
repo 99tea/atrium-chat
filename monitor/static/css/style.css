@@ -65,7 +65,7 @@ body {
 }
 
 .sidebar {
-  width: 250px;
+  width: 220px;
   height: 100%;
   flex-shrink: 0;
   background: var(--panel);
@@ -75,33 +75,34 @@ body {
   padding: 12px 0;
   transition: width 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
   z-index: 90;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible; /* A mágica para o tooltip não ser cortado */
 }
 
-.sidebar.collapsed { width: 84px; }
+.sidebar.collapsed { width: 76px; }
 
-.sidebar ul { list-style: none; padding: 0; margin: 0; }
-.sidebar li { display: flex; align-items: center; gap: 16px; padding: 14px 24px; cursor: pointer; color: var(--muted); font-size: 0.98rem; white-space: nowrap; }
-.sidebar li i { font-size: 1.25rem; width: 24px; text-align: center; flex-shrink: 0; }
+.sidebar ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.sidebar.collapsed ul { gap: 16px; margin-top: 10px; }
+
+.sidebar li { display: flex; align-items: center; gap: 16px; padding: 10px 20px; cursor: pointer; color: var(--muted); font-size: 0.85rem; white-space: nowrap; position: relative; transition: all 0.2s ease; }
+.sidebar li i { font-size: 1.2rem; width: 24px; text-align: center; flex-shrink: 0; transition: font-size 0.2s ease; }
 .sidebar li:hover:not(.nav-section-title) { background: var(--panel-light); color: var(--text); }
 .sidebar li.active { color: var(--text); border-left: 3px solid var(--accent); background: var(--panel-light); }
 
 .nav-section-title {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: #636782;
   text-transform: uppercase;
   font-weight: 700;
   letter-spacing: 0.05em;
-  padding: 26px 24px 12px;
+  padding: 20px 20px 8px;
   pointer-events: none;
 }
 
 .sidebar.collapsed .nav-section-title { display: none; }
-.sidebar.collapsed li { padding: 11px 0; justify-content: center; }
+.sidebar.collapsed li { padding: 16px 0; justify-content: center; width: 100%; }
+.sidebar.collapsed li i { font-size: 1.6rem; }
 .sidebar.collapsed .nav-label { display: none; }
 .sidebar.collapsed li.active { border-left: none; border-right: 3px solid var(--accent); }
-.sidebar:not(.collapsed) li[data-tooltip]::after { display: none; }
 
 main#content { 
   flex: 1; 
@@ -208,11 +209,46 @@ input { padding: 9px; margin-left: 8px; border-radius: 8px; border: 1px solid va
 .spinner { width: 40px; height: 40px; border: 4px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* =========================================
+   TOOLTIPS DA SIDEBAR
+========================================= */
 [data-tooltip] { position: relative; cursor: help; }
 [data-tooltip]::after { content: attr(data-tooltip); position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%); background: var(--panel-light); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 0.75rem; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid var(--border); z-index: 9999; }
 [data-tooltip]:hover::after { opacity: 1; }
 th [data-tooltip]::after, th[data-tooltip]::after { bottom: auto; top: 125%; }
-.sidebar [data-tooltip]::after { bottom: auto; top: 50%; left: 125%; transform: translateY(-50%); }
+
+/* Ajuste Específico para a Sidebar Contraída */
+.sidebar.collapsed li[data-tooltip]::after { 
+  bottom: auto; 
+  top: 50%; 
+  left: calc(100% + 14px); 
+  transform: translateY(-50%); 
+  background: var(--accent); 
+  color: #fff; 
+  border: none;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.sidebar.collapsed li[data-tooltip]::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 4px);
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: var(--accent);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+  z-index: 9999;
+}
+.sidebar.collapsed li[data-tooltip]:hover::before { opacity: 1; }
+
+.sidebar:not(.collapsed) li[data-tooltip]::after,
+.sidebar:not(.collapsed) li[data-tooltip]::before { display: none; }
+
 
 button:active, .kpi-clickable:active, .sidebar li:active, .filter-btn:active { transform: scale(0.97); transition: transform 0.1s; }
 
@@ -513,7 +549,6 @@ body.light-theme .home-task-input-row input:focus { background: #fff; }
   white-space: nowrap;
 }
 
-
 /* =========================================================
    COMMAND PALETTE (CTRL+K)
    ========================================================= */
@@ -619,4 +654,30 @@ body.tv-mode ::-webkit-scrollbar {
 
 body.tv-mode {
   scrollbar-width: none !important;
+}
+
+
+/* Ajuste de responsividade vertical para a Sidebar */
+@media (max-height: 800px) {
+  .sidebar li {
+    padding: 8px 16px;
+    font-size: 0.8rem;
+  }
+  .sidebar.collapsed li {
+    padding: 10px 0;
+  }
+  .sidebar.collapsed ul {
+    gap: 8px;
+    margin-top: 5px;
+  }
+  .nav-section-title {
+    padding: 16px 16px 8px;
+    font-size: 0.65rem;
+  }
+  .sidebar li i {
+    font-size: 1.1rem;
+  }
+  .sidebar.collapsed li i {
+    font-size: 1.4rem;
+  }
 }

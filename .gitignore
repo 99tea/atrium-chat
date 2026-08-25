@@ -27,3 +27,7 @@ scripts/
 
 
 evolution/webhook/config/*
+
+monitor/node_modules/
+monitor/package-lock.json
+monitor/static/css/output.css

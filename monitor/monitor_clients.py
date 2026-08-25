@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Depends
 from auth import require_admin, get_account_id
-from monitor_core import _validate_days_extended, get_inbox_channel_map, resolve_channel, get_team_names
+from monitor_core import _validate_days_extended, get_channels, resolve_channel, get_team_names
 
 router = APIRouter()
 
@@ -29,7 +29,7 @@ async def clients_summary(request: Request, days: int = 30, user=Depends(require
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT COALESCE(cs.cd_cliente, 'sem-codigo-' || cs.contact_id) AS client_key,
@@ -45,16 +45,17 @@ async def clients_summary(request: Request, days: int = 30, user=Depends(require
             days, account_id,
         )
 
+    channel_keys = [c["channel_key"] for c in channels] + ["other"]
     clients = {}
     for r in rows:
         c = clients.setdefault(r["client_key"], {
             "client_key": r["client_key"], "client_name": r["client_name"],
             "regime_tributario": r["regime_tributario"], "status_contrato": r["status_contrato"],
             "total": 0, "resolved_total": 0, "resolution_sum": 0, "breach_count": 0,
-            "channels": {"whatsapp": 0, "email": 0, "other": 0},
+            "channels": {k: 0 for k in channel_keys},
         })
         c["total"] += 1
-        channel = resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)
+        channel = resolve_channel(r["inbox_id"], channels)
         c["channels"][channel] += 1
         if r["resolution_minutes"] is not None:
             c["resolved_total"] += 1
@@ -124,7 +125,7 @@ async def client_detail(client_key: str, request: Request, days: int = 30, user=
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         team_names = await get_team_names(conn, account_id)
 
         if client_key.startswith("sem-codigo-"):
@@ -168,13 +169,14 @@ async def client_detail(client_key: str, request: Request, days: int = 30, user=
 
     client_name = rows[0]["razao_social"] or rows[0]["company_name"] or rows[0]["contact_name"] or "Cliente não identificado"
 
+    channel_keys = [c["channel_key"] for c in channels] + ["other"]
     by_subject = {}
-    by_channel = {"whatsapp": 0, "email": 0, "other": 0}
+    by_channel = {k: 0 for k in channel_keys}
     conversations = []
     for r in rows:
         subj = r["subject"] or "Não categorizado"
         by_subject[subj] = by_subject.get(subj, 0) + 1
-        by_channel[resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)] += 1
+        by_channel[resolve_channel(r["inbox_id"], channels)] += 1
         conversations.append({
             "conversation_id": r["conversation_id"], "subject": r["subject"], "status": r["status"],
             "priority": r["priority"], "created_at": r["created_at"],

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Depends, HTTPException
 from datetime import datetime, timezone
 from typing import Optional
 from auth import get_current_user, get_account_id
-from monitor_core import get_inbox_channel_map, resolve_channel
+from monitor_core import get_channels, resolve_channel
 import httpx
 import os
 
@@ -94,7 +94,7 @@ async def list_conversations(
 
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(query, *params)
 
     total = rows[0]["total_count"] if rows else 0
@@ -102,7 +102,7 @@ async def list_conversations(
     for r in rows:
         d = dict(r)
         d.pop("total_count", None)
-        d["channel"] = resolve_channel(d["inbox_id"], whatsapp_ids, email_ids)
+        d["channel"] = resolve_channel(d["inbox_id"], channels)
         d["minutes_remaining"] = (
             None if d["sla_deadline"] is None
             else (d["sla_deadline"] - datetime.now(timezone.utc)).total_seconds() / 60

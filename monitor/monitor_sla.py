@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Depends
 from auth import require_admin, get_account_id
-from monitor_core import _validate_days_extended, get_inbox_channel_map, resolve_channel, get_team_names
+from monitor_core import _validate_days_extended, get_channels, resolve_channel, get_team_names
 
 router = APIRouter()
 
@@ -39,7 +39,7 @@ async def sla_by_priority(request: Request, days: int = 30, user=Depends(require
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = v.conversation_id
             WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1)
-            GROUP BY priority
+            GROUP BY cs.priority
             """,
             days, account_id,
         )
@@ -51,7 +51,7 @@ async def sla_by_channel(request: Request, days: int = 30, user=Depends(require_
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT v.inbox_id,
@@ -68,7 +68,7 @@ async def sla_by_channel(request: Request, days: int = 30, user=Depends(require_
 
     by_channel = {}
     for r in rows:
-        channel = resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)
+        channel = resolve_channel(r["inbox_id"], channels)
         c = by_channel.setdefault(channel, {"channel": channel, "total": 0, "fr_sum": 0, "res_sum": 0, "breach_sum": 0})
         c["total"] += r["total"]
         c["fr_sum"] += (r["avg_first_response"] or 0) * r["total"]

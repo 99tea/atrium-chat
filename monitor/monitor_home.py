@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
 from auth import get_current_user, get_account_id
-from monitor_core import get_inbox_channel_map, resolve_channel
+from monitor_core import get_channels, resolve_channel
 import httpx
 import os
 
@@ -64,7 +64,7 @@ async def delete_task(task_id: int, request: Request, user=Depends(get_current_u
 async def home_stats(request: Request, user=Depends(get_current_user), account_id: int = Depends(get_account_id)):
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT s.inbox_id,
@@ -99,20 +99,15 @@ async def home_stats(request: Request, user=Depends(get_current_user), account_i
     created_total = sum(r["created"] for r in rows)
     resolved_total = sum(r["resolved"] for r in rows)
 
+    channel_keys = [c["channel_key"] for c in channels] + ["other"]
     hourly_data = {}
     for r in hourly_rows:
         h = r["hour"]
         if h not in hourly_data:
-            hourly_data[h] = {"hour": h, "created_whatsapp": 0, "created_email": 0, "created_other": 0, "resolved": 0}
+            hourly_data[h] = {"hour": h, **{f"created_{k}": 0 for k in channel_keys}, "resolved": 0}
 
-        channel = resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)
-        if channel == "whatsapp":
-            hourly_data[h]["created_whatsapp"] += r["created"]
-        elif channel == "email":
-            hourly_data[h]["created_email"] += r["created"]
-        else:
-            hourly_data[h]["created_other"] += r["created"]
-
+        channel = resolve_channel(r["inbox_id"], channels)
+        hourly_data[h][f"created_{channel}"] += r["created"]
         hourly_data[h]["resolved"] += r["resolved"]
 
     hourly_list = list(hourly_data.values())

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
 from datetime import datetime, timezone
 from auth import get_current_user, require_admin, get_account_id
-from monitor_core import _validate_days, _validate_days_extended, get_inbox_channel_map, resolve_channel
+from monitor_core import _validate_days, _validate_days_extended, get_channels, resolve_channel
 import httpx
 import os
 
@@ -224,7 +224,7 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot s ON s.conversation_id = v.conversation_id
             WHERE v.account_id = $3 AND s.assignee_id = $1 AND v.last_resolved_at >= now() - make_interval(days => $2)
-            GROUP BY priority
+            GROUP BY s.priority
             """,
             agent_id, days, account_id,
         )
@@ -265,11 +265,11 @@ async def agent_detail_full(agent_id: int, request: Request, days: int = 30, use
             """,
             agent_id, days, account_id,
         )
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
 
     by_channel = {}
     for r in by_channel_raw:
-        channel = resolve_channel(r["inbox_id"], whatsapp_ids, email_ids)
+        channel = resolve_channel(r["inbox_id"], channels)
         bucket = by_channel.setdefault(channel, {"channel": channel, "total": 0, "avg_resolution_sum": 0, "avg_first_response_sum": 0})
         bucket["total"] += r["total"]
         bucket["avg_resolution_sum"] += (r["avg_resolution"] or 0) * r["total"]
@@ -379,7 +379,7 @@ async def agent_open_conversations(agent_id: int, request: Request, user=Depends
         raise HTTPException(403, "forbidden")
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
-        whatsapp_ids, email_ids = await get_inbox_channel_map(conn, account_id)
+        channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
             SELECT cs.conversation_id, cs.inbox_id, cs.status, cs.priority, cs.subject,
@@ -400,7 +400,7 @@ async def agent_open_conversations(agent_id: int, request: Request, user=Depends
     items = []
     for r in rows:
         d = dict(r)
-        d["channel"] = resolve_channel(d["inbox_id"], whatsapp_ids, email_ids)
+        d["channel"] = resolve_channel(d["inbox_id"], channels)
         d["minutes_remaining"] = (
             None if d["sla_deadline"] is None
             else (d["sla_deadline"] - datetime.now(timezone.utc)).total_seconds() / 60

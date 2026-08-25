@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from datetime import datetime, timezone
 from typing import Optional
 from dataclasses import dataclass, field
+from zoneinfo import ZoneInfo
 import httpx
 import os
 import json
@@ -24,11 +25,9 @@ STATE_PATH = "/app/data/conversation_state.json"
 STATE_TTL_HOURS = 24
 state_lock = asyncio.Lock()
 
+ABERTO_LABEL = "aberto"
 TENANTS_CONFIG_DIR = "/app/config/tenants"
-DEFAULT_OUT_OF_OFFICE_MESSAGE = (
-    "No momento estamos fora do horario de atendimento. "
-    "Assim que retornarmos, responderemos sua mensagem."
-)
+DEFAULT_TIMEZONE = "America/Sao_Paulo"
 
 
 @dataclass
@@ -146,76 +145,40 @@ def resolve_instance_by_inbox(inbox_id: int) -> Optional[InboxConfig]:
 
 
 # ---------------------------------------------------------------------------
-# Business hours - consulta direto a config da inbox no Chatwoot (fonte unica
-# de verdade; cliente ajusta horario/mensagem na propria UI do Chatwoot, sem
-# precisar mexer em YAML). Evita duplicidade de mensagem: o webhook so envia
-# a mensagem de fora-de-horario quando decide nao rodar o flow; nao dependemos
-# do auto-reply nativo do Chatwoot (comportamento instavel documentado para
-# canais tipo API).
+# Routing rules
 # ---------------------------------------------------------------------------
 
-async def get_inbox_business_hours_status(inbox_id: int, tenant: TenantConfig, client: httpx.AsyncClient) -> tuple[bool, Optional[str]]:
-    """Retorna (esta_dentro_do_horario, out_of_office_message).
-    Se working_hours_enabled=false ou em caso de falha na consulta, assume
-    sempre dentro do horario (fail-open, para nao bloquear atendimento por
-    erro de rede)."""
-    try:
-        r = await client.get(
-            f"{tenant.chatwoot_url}/api/v1/accounts/{tenant.chatwoot_account_id}/inboxes/{inbox_id}",
-            headers=tenant.headers,
-        )
-        if r.status_code != 200:
-            print(f"[business_hours] falha ao consultar inbox={inbox_id} status={r.status_code} - assumindo dentro do horario")
-            return True, None
-
-        data = r.json()
-        if not data.get("working_hours_enabled"):
-            return True, None
-
-        tz_name = data.get("timezone") or "UTC"
-        try:
-            from zoneinfo import ZoneInfo
-            now_local = datetime.now(tz=ZoneInfo(tz_name))
-        except Exception:
-            now_local = datetime.now(tz=timezone.utc)
-
-        # Convencao Chatwoot/Rails: day_of_week 0=Domingo ... 6=Sabado
-        weekday_map = {0: 6, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}  # python weekday() -> chatwoot day_of_week
-        today_cw = weekday_map[now_local.weekday()]
-
-        working_hours = data.get("working_hours", [])
-        today_entry = next((wh for wh in working_hours if wh.get("day_of_week") == today_cw), None)
-
-        out_of_office_message = data.get("out_of_office_message") or DEFAULT_OUT_OF_OFFICE_MESSAGE
-
-        if not today_entry or today_entry.get("closed_all_day"):
-            return False, out_of_office_message
-        if today_entry.get("open_all_day"):
-            return True, None
-
-        open_minutes = today_entry.get("open_hour", 0) * 60 + today_entry.get("open_minutes", 0)
-        close_minutes = today_entry.get("close_hour", 0) * 60 + today_entry.get("close_minutes", 0)
-        now_minutes = now_local.hour * 60 + now_local.minute
-
-        within = open_minutes <= now_minutes <= close_minutes
-        return within, (None if within else out_of_office_message)
-
-    except httpx.HTTPError as e:
-        print(f"[business_hours] erro ao consultar inbox={inbox_id} err={e} - assumindo dentro do horario")
-        return True, None
+def _check_business_hours(rule: dict, now_utc: datetime) -> bool:
+    tz = ZoneInfo(rule.get("timezone", DEFAULT_TIMEZONE))
+    local_now = now_utc.astimezone(tz)
+    weekday = local_now.weekday()
+    day_key = {0: "mon_fri", 1: "mon_fri", 2: "mon_fri", 3: "mon_fri", 4: "mon_fri", 5: "sat", 6: "sun"}[weekday]
+    range_str = rule.get("hours", {}).get(day_key)
+    if not range_str:
+        return False
+    start_str, end_str = range_str.split("-")
+    start = datetime.strptime(start_str.strip(), "%H:%M").time()
+    end = datetime.strptime(end_str.strip(), "%H:%M").time()
+    return start <= local_now.time() <= end
 
 
 def evaluate_routing_rules(rules: list, phone: str) -> Optional[dict]:
+    now_utc = datetime.now(tz=timezone.utc)
     for rule in rules:
         rule_type = rule.get("type")
 
-        if rule_type == "priority_contact":
+        if rule_type == "business_hours":
+            if not _check_business_hours(rule, now_utc):
+                print(f"[routing_rules] business_hours matched (fora do horario) phone={phone}")
+                return {"team_id": rule["outside_hours_team_id"], "message": rule["outside_hours_message"]}
+
+        elif rule_type == "priority_contact":
             if phone in set(rule.get("contacts", [])):
                 print(f"[routing_rules] priority_contact matched phone={phone}")
                 return {"team_id": rule["team_id"], "message": rule.get("message", "")}
 
         else:
-            print(f"[routing_rules] WARNING tipo desconhecido ou nao mais suportado={rule_type}")
+            print(f"[routing_rules] WARNING tipo desconhecido={rule_type}")
 
     return None
 
@@ -338,6 +301,26 @@ async def delete_conversation(conversation_id: int, tenant: TenantConfig):
             print(f"[resolve_conversation] conv={conversation_id} status={r.status_code}")
         except httpx.HTTPError as e:
             print(f"[resolve_conversation] error conv={conversation_id} err={e}")
+
+
+async def set_label(conversation_id: str, label: str, tenant: TenantConfig):
+    if not conversation_id:
+        return
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(
+                f"{tenant.chatwoot_url}/api/v1/accounts/{tenant.chatwoot_account_id}/conversations/{conversation_id}/labels",
+                headers=tenant.headers,
+            )
+            existing = r.json().get("payload", []) if r.status_code == 200 else []
+            r2 = await client.post(
+                f"{tenant.chatwoot_url}/api/v1/accounts/{tenant.chatwoot_account_id}/conversations/{conversation_id}/labels",
+                json={"labels": list(set(existing + [label]))},
+                headers=tenant.headers,
+            )
+            print(f"[set_label] conv={conversation_id} label={label} status={r2.status_code}")
+        except httpx.HTTPError as e:
+            print(f"[set_label] error conv={conversation_id} err={e}")
 
 
 async def get_or_create_contact(phone: str, name: str, inbox_id: int, tenant: TenantConfig, client: httpx.AsyncClient) -> tuple[dict, bool]:
@@ -525,6 +508,9 @@ async def whatsapp_webhook(request: Request):
 
         await create_message(conversation_id, message, tenant, client)
 
+        if conv_is_new:
+            await set_label(str(conversation_id), ABERTO_LABEL, tenant)
+
         conv_key = f"{inbox.inbox_id}:{conversation_id}"
         state = await load_state()
         state = await sync_state_with_chatwoot(conv_key, state, tenant, client)
@@ -537,35 +523,27 @@ async def whatsapp_webhook(request: Request):
             conv_state = None
 
         if conv_state is None:
-            within_hours, out_of_office_msg = await get_inbox_business_hours_status(inbox.inbox_id, tenant, client)
-
-            if not within_hours:
-                print(f"[whatsapp_webhook] conv={conv_key} fora do horario de atendimento - flow suspenso")
-                await send_whatsapp_message(phone, out_of_office_msg, inbox.evo_instance, client)
+            routing_match = evaluate_routing_rules(inbox.routing_rules, phone)
+            if routing_match:
+                await send_whatsapp_message(phone, routing_match["message"], inbox.evo_instance, client)
+                await assign_team(str(conversation_id), routing_match["team_id"], tenant, client)
                 new_state = {"status": "handled"}
 
-            else:
-                routing_match = evaluate_routing_rules(inbox.routing_rules, phone)
-                if routing_match:
-                    await send_whatsapp_message(phone, routing_match["message"], inbox.evo_instance, client)
-                    await assign_team(str(conversation_id), routing_match["team_id"], tenant, client)
-                    new_state = {"status": "handled"}
+            elif inbox.flow == "menu":
+                new_state = await handle_menu_flow_first_message(inbox, phone, inbox.evo_instance, client)
 
-                elif inbox.flow == "menu":
-                    new_state = await handle_menu_flow_first_message(inbox, phone, inbox.evo_instance, client)
+            elif inbox.flow == "keyword_only":
+                new_state = await handle_keyword_only_flow_first_message(
+                    inbox, message, conversation_id, phone, tenant, inbox.evo_instance, client
+                )
 
-                elif inbox.flow == "keyword_only":
-                    new_state = await handle_keyword_only_flow_first_message(
-                        inbox, message, conversation_id, phone, tenant, inbox.evo_instance, client
-                    )
+            elif inbox.flow == "direct":
+                new_state = await handle_direct_flow_first_message(
+                    inbox, conversation_id, phone, tenant, inbox.evo_instance, client
+                )
 
-                elif inbox.flow == "direct":
-                    new_state = await handle_direct_flow_first_message(
-                        inbox, conversation_id, phone, tenant, inbox.evo_instance, client
-                    )
-
-                else:  # flow == "none"
-                    new_state = {"status": "handled"}
+            else:  # flow == "none"
+                new_state = {"status": "handled"}
 
             new_state["phone"] = phone
             new_state["created_at"] = datetime.now(tz=timezone.utc).isoformat()
@@ -573,16 +551,11 @@ async def whatsapp_webhook(request: Request):
             await save_state(state)
 
         elif conv_state.get("status") == "awaiting_department" and inbox.flow == "menu":
-            within_hours, out_of_office_msg = await get_inbox_business_hours_status(inbox.inbox_id, tenant, client)
-            if not within_hours:
-                print(f"[whatsapp_webhook] conv={conv_key} resposta ao menu recebida fora do horario - avisando")
-                await send_whatsapp_message(phone, out_of_office_msg, inbox.evo_instance, client)
-            else:
-                result_state = await handle_menu_flow_classification(
-                    inbox, message, conversation_id, phone, tenant, inbox.evo_instance, client
-                )
-                state[conv_key]["status"] = result_state["status"]
-                await save_state(state)
+            result_state = await handle_menu_flow_classification(
+                inbox, message, conversation_id, phone, tenant, inbox.evo_instance, client
+            )
+            state[conv_key]["status"] = result_state["status"]
+            await save_state(state)
 
     return {"status": "ok", "conversation_id": conversation_id}
 
@@ -711,6 +684,7 @@ async def chatwoot_email_webhook(request: Request):
         await delete_conversation(conversation_id, tenant)
         return {"status": "deleted", "reason": "not_registered"}
 
+    await add_label(conversation_id, ABERTO_LABEL, tenant)
     return {"status": "ok"}
 
 

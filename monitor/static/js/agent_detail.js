@@ -1,77 +1,84 @@
 const AGENT_DETAIL_DAYS_OPTIONS = [7, 14, 30, 90, 180];
 
-const AGENT_DETAIL_CHANNEL_MAP = { 
-  whatsapp: { label: 'WhatsApp', badge: 'badge-green', icon: 'bi-whatsapp' }, 
-  email: { label: 'E-mail', badge: 'badge-blue', icon: 'bi-envelope' }, 
-  other: { label: 'Outros', badge: 'badge-neutral', icon: 'bi-chat-dots' } 
-};
+let AGENT_DETAIL_CHANNEL_INFO = {};
 
-// Formatação inteligente para exibir Dias e Horas
+async function loadAgentDetailChannelInfo() {
+  const channels = await (await fetch('/monitor/api/channels')).json();
+  AGENT_DETAIL_CHANNEL_INFO = {};
+  channels.forEach(c => {
+    if (c.channel_key === 'whatsapp') {
+      AGENT_DETAIL_CHANNEL_INFO[c.channel_key] = { label: c.channel_name, classes: 'text-accent-green bg-accent-green/10 border-accent-green/20', icon: 'bi-whatsapp' };
+    } else if (c.channel_key === 'email') {
+      AGENT_DETAIL_CHANNEL_INFO[c.channel_key] = { label: c.channel_name, classes: 'text-blue-400 bg-blue-400/10 border-blue-400/20', icon: 'bi-envelope' };
+    } else {
+      AGENT_DETAIL_CHANNEL_INFO[c.channel_key] = { label: c.channel_name, classes: 'text-muted bg-border/30 border-border', icon: 'bi-chat-dots' };
+    }
+  });
+  AGENT_DETAIL_CHANNEL_INFO.other = { label: 'Outros', classes: 'text-muted bg-border/30 border-border', icon: 'bi-chat-dots' };
+}
+
 function formatDetailedDuration(totalMinutes) {
   if (totalMinutes === null || totalMinutes === undefined) return '-';
   const minutes = Math.round(totalMinutes);
   if (minutes < 60) return `${minutes}m`;
-  
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  
-  if (hours < 24) {
-    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
-  }
-  
+  if (hours < 24) return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
   const days = Math.floor(hours / 24);
   const remainingHours = hours % 24;
-  
   if (remainingHours === 0) return `${days}d`;
   return `${days}d ${remainingHours}h`;
 }
 
 function agentDetailSlaBadge(row) {
+  const baseCls = "inline-flex items-center gap-1.5 px-2 py-0.5 text-[0.65rem] font-semibold rounded-md border whitespace-nowrap";
   if (row.minutes_remaining === null || row.minutes_remaining === undefined) {
-    return `<span class="badge badge-neutral" style="display:inline-flex; align-items:center; gap:4px;"><i class="bi bi-clock-history"></i> Sem meta</span>`;
+    return `<span class="${baseCls} bg-border/30 text-muted border-border"><i class="bi bi-clock-history"></i> Sem meta</span>`;
   }
   const late = row.minutes_remaining < 0;
   const absMinutes = Math.abs(row.minutes_remaining);
   const icon = late ? 'bi-alarm-fill' : 'bi-stopwatch-fill';
+  const color = late ? 'text-accent-red bg-accent-red/10 border-accent-red/20' : 'text-accent-green bg-accent-green/10 border-accent-green/20';
   
-  return `<span class="badge ${late ? 'badge-red' : 'badge-green'}" style="white-space:nowrap; display:inline-flex; align-items:center; gap:4px;">
-            <i class="bi ${icon}"></i> ${late ? 'Atrasado ' : 'Em '}${formatDetailedDuration(absMinutes)}
-          </span>`;
+  return `<span class="${baseCls} ${color}"><i class="bi ${icon}"></i> ${late ? 'Atraso ' : 'Em '}${formatDetailedDuration(absMinutes)}</span>`;
 }
 
 function agentDetailPriorityBadge(priority) {
   const prioMap = { 
-    urgent: { label: 'Urgente', badge: 'badge-red', icon: 'bi-exclamation-triangle-fill' }, 
-    high: { label: 'Alta', badge: 'badge-red', icon: 'bi-arrow-up-circle-fill' }, 
-    medium: { label: 'Média', badge: 'badge-yellow', icon: 'bi-dash-circle-fill' }, 
-    low: { label: 'Baixa', badge: 'badge-neutral', icon: 'bi-arrow-down-circle-fill' }, 
-    none: { label: 'Nenhuma', badge: 'badge-neutral', icon: 'bi-info-circle-fill' } 
+    urgent: { label: 'Urgente', classes: 'text-accent-red bg-accent-red/10 border-accent-red/20', icon: 'bi-exclamation-triangle-fill' }, 
+    high: { label: 'Alta', classes: 'text-accent-red bg-accent-red/10 border-accent-red/20', icon: 'bi-arrow-up-circle-fill' }, 
+    medium: { label: 'Média', classes: 'text-accent-yellow bg-accent-yellow/10 border-accent-yellow/20', icon: 'bi-dash-circle-fill' }, 
+    low: { label: 'Baixa', classes: 'text-muted bg-border/30 border-border', icon: 'bi-arrow-down-circle-fill' }, 
+    none: { label: 'Nenhuma', classes: 'text-muted bg-border/30 border-border', icon: 'bi-info-circle-fill' } 
   };
   const prio = String(priority || 'none').toLowerCase();
   const info = prioMap[prio] || prioMap.none;
   
-  return `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 8px;">
+  return `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-[0.65rem] font-semibold rounded-md border whitespace-nowrap ${info.classes}">
             <i class="bi ${info.icon}"></i> ${info.label}
           </span>`;
 }
 
 function agentDetailLabelBadge(label) {
   const hex = getLabelColor(label);
-  return `<span class="badge badge-neutral" style="margin-right:4px; display:inline-flex; align-items:center; gap:6px; padding-left:8px;">
-            <span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${hex}; box-shadow: 0 0 4px ${hex}80;"></span>
+  return `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-[0.65rem] font-semibold rounded-md bg-border/30 text-muted border border-border whitespace-nowrap">
+            <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: ${hex}; box-shadow: 0 0 4px ${hex}80;"></span>
             ${label}
           </span>`;
 }
 
 function agentDetailCompareValue(agentVal, teamVal) {
   if (agentVal === null || agentVal === undefined || teamVal === null || teamVal === undefined) {
-    return `<span class="muted-text">-</span>`;
+    return `<span class="text-muted text-sm">-</span>`;
   }
   const better = agentVal <= teamVal;
   const diffPct = teamVal ? Math.abs(((agentVal - teamVal) / teamVal) * 100).toFixed(0) : 0;
-  const color = better ? 'var(--accent-green)' : 'var(--accent-red)';
-  const arrow = better ? 'bi-arrow-down-short' : 'bi-arrow-up-short';
-  return `${formatDetailedDuration(agentVal)} <span style="color:${color}; font-size:0.85rem;"><i class="bi ${arrow}"></i>${diffPct}% vs time</span>`;
+  const color = better ? 'text-accent-green' : 'text-accent-red';
+  const icon = better ? 'bi-arrow-down-short' : 'bi-arrow-up-short';
+  return `<div class="flex flex-col text-right">
+            <span class="text-lg font-bold text-text">${formatDetailedDuration(agentVal)}</span>
+            <span class="text-[0.7rem] font-semibold ${color}"><i class="bi ${icon}"></i>${diffPct}% vs time</span>
+          </div>`;
 }
 
 async function renderAgentDetailPage(agentId, days) {
@@ -93,10 +100,10 @@ async function renderAgentDetailPage(agentId, days) {
     const current = ((1 - s.resolution_breach_rate) * 100).toFixed(0);
     const target = settings.sla_target_percent || 95;
     slaEl.textContent = `${current}% / ${target}%`;
-    slaEl.style.color = Number(current) >= Number(target) ? '#34d399' : '#f87171';
+    slaEl.className = `text-2xl font-bold leading-none ${Number(current) >= Number(target) ? 'text-accent-green glow-text' : 'text-accent-red glow-text'}`;
   } else {
     slaEl.textContent = '-';
-    slaEl.style.color = '';
+    slaEl.className = 'text-2xl font-bold leading-none text-text';
   }
 
   document.getElementById('agent-page-awaiting').textContent = awaiting.length;
@@ -104,62 +111,65 @@ async function renderAgentDetailPage(agentId, days) {
 
   const teamAvg = detail.team_avg;
   const compareEl = document.getElementById('agent-page-team-compare');
-  compareEl.style.display = 'flex'; // Sempre exibe o painel de tempos
-  
   if (teamAvg && teamAvg.resolved_count > 0) {
-    document.getElementById('agent-page-team-name').innerHTML = `Comparativo: <span style="color: var(--text);">${TEAM_NAMES[teamAvg.team_id] || `Time ${teamAvg.team_id}`}</span>`;
-    document.getElementById('agent-page-cmp-frt').style.display = '';
+    compareEl.classList.remove('hidden');
+    compareEl.classList.add('flex');
+    document.getElementById('agent-page-team-name').innerHTML = `Comparativo: <span class="text-accent-blue">${TEAM_NAMES[teamAvg.team_id] || `Time ${teamAvg.team_id}`}</span>`;
+    document.getElementById('agent-page-cmp-frt').classList.remove('hidden');
     document.getElementById('agent-page-cmp-frt').innerHTML = agentDetailCompareValue(s.avg_first_response, teamAvg.avg_first_response);
-    document.getElementById('agent-page-cmp-res').style.display = '';
+    document.getElementById('agent-page-cmp-res').classList.remove('hidden');
     document.getElementById('agent-page-cmp-res').innerHTML = agentDetailCompareValue(s.avg_resolution, teamAvg.avg_resolution);
   } else {
-    document.getElementById('agent-page-team-name').textContent = 'Tempos Médios';
-    document.getElementById('agent-page-cmp-frt').style.display = 'none';
-    document.getElementById('agent-page-cmp-res').style.display = 'none';
+    compareEl.classList.add('hidden');
+    compareEl.classList.remove('flex');
   }
 
   const PRIORITY_ORDER = ['urgent', 'high', 'medium', 'low', 'none'];
   const orderedPriority = PRIORITY_ORDER.map(p => detail.by_priority?.find(r => r.priority === p) || { priority: p, total: 0, avg_resolution: null, avg_first_response: null });
 
   document.querySelector('#agent-page-priority-table tbody').innerHTML = orderedPriority.map(r => `
-    <tr>
-      <td>${agentDetailPriorityBadge(r.priority)}</td>
-      <td style="text-align: right;">${r.total}</td>
-      <td style="text-align: right;">${formatDetailedDuration(r.avg_first_response)}</td>
-      <td style="text-align: right;">${formatDetailedDuration(r.avg_resolution)}</td>
+    <tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors">
+      <td class="px-3 py-2.5 truncate w-[130px]">${agentDetailPriorityBadge(r.priority)}</td>
+      <td class="px-3 py-2.5 text-right font-medium text-[0.8rem] text-muted">${r.total}</td>
+      <td class="px-3 py-2.5 text-right font-medium text-[0.8rem] text-text whitespace-nowrap">${formatDetailedDuration(r.avg_first_response)}</td>
+      <td class="px-3 py-2.5 text-right font-bold text-[0.8rem] text-text whitespace-nowrap">${formatDetailedDuration(r.avg_resolution)}</td>
     </tr>
   `).join('');
 
   document.querySelector('#agent-page-channel-table tbody').innerHTML = (detail.by_channel || []).length
     ? detail.by_channel.map(r => {
-        const info = AGENT_DETAIL_CHANNEL_MAP[r.channel] || AGENT_DETAIL_CHANNEL_MAP.other;
+        const info = AGENT_DETAIL_CHANNEL_INFO[r.channel] || AGENT_DETAIL_CHANNEL_INFO.other;
         return `
-          <tr>
-            <td>
-              <span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 8px;">
+          <tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors">
+            <td class="px-3 py-2.5 truncate w-[130px]">
+              <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-[0.65rem] font-semibold rounded-md border whitespace-nowrap ${info.classes}">
                 <i class="bi ${info.icon}"></i> ${info.label}
               </span>
             </td>
-            <td style="text-align: right;">${r.total}</td>
-            <td style="text-align: right;">${formatDetailedDuration(r.avg_first_response)}</td>
-            <td style="text-align: right;">${formatDetailedDuration(r.avg_resolution)}</td>
+            <td class="px-3 py-2.5 text-right font-medium text-[0.8rem] text-muted">${r.total}</td>
+            <td class="px-3 py-2.5 text-right font-medium text-[0.8rem] text-text whitespace-nowrap">${formatDetailedDuration(r.avg_first_response)}</td>
+            <td class="px-3 py-2.5 text-right font-bold text-[0.8rem] text-text whitespace-nowrap">${formatDetailedDuration(r.avg_resolution)}</td>
           </tr>`;
       }).join('')
-    : '<tr><td colspan="4"><div class="empty-state" style="padding: 24px;"><i class="bi bi-chat-dots" style="font-size: 1.5rem; margin-bottom: 8px;"></i><span>Sem dados no período</span></div></td></tr>';
+    : '<tr><td colspan="4"><div class="p-4 text-center text-muted"><i class="bi bi-chat-dots text-xl block mb-1"></i><span class="text-xs">Sem dados</span></div></td></tr>';
 
   document.querySelector('#agent-page-subject-table tbody').innerHTML = (detail.by_subject || []).length
     ? detail.by_subject.map(r => `
-        <tr>
-          <td style="font-weight: 500;">${r.subject}</td>
-          <td style="text-align: right;">${r.total}</td>
-          <td style="text-align: right;">${formatDetailedDuration(r.avg_first_response)}</td>
-          <td style="text-align: right;">${formatDetailedDuration(r.avg_resolution)}</td>
+        <tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors">
+          <td class="px-3 py-2.5 font-medium text-[0.8rem] text-text truncate max-w-[120px]" title="${r.subject}">${r.subject}</td>
+          <td class="px-3 py-2.5 text-right font-medium text-[0.8rem] text-muted">${r.total}</td>
+          <td class="px-3 py-2.5 text-right font-medium text-[0.8rem] text-text whitespace-nowrap">${formatDetailedDuration(r.avg_first_response)}</td>
+          <td class="px-3 py-2.5 text-right font-bold text-[0.8rem] text-text whitespace-nowrap">${formatDetailedDuration(r.avg_resolution)}</td>
         </tr>`).join('')
-    : '<tr><td colspan="4"><div class="empty-state" style="padding: 24px;"><i class="bi bi-folder2-open" style="font-size: 1.5rem; margin-bottom: 8px;"></i><span>Sem dados no período</span></div></td></tr>';
+    : '<tr><td colspan="4"><div class="p-4 text-center text-muted"><i class="bi bi-folder2-open text-xl block mb-1"></i><span class="text-xs">Sem dados</span></div></td></tr>';
 
   document.querySelector('#agent-page-labels-table tbody').innerHTML = (detail.open_labels || []).length
-    ? detail.open_labels.map(r => `<tr><td>${agentDetailLabelBadge(r.label)}</td><td style="text-align: right;"><span class="badge badge-neutral">${r.total}</span></td></tr>`).join('')
-    : '<tr><td colspan="2"><div class="empty-state" style="padding: 24px;"><i class="bi bi-tags" style="font-size: 1.5rem; margin-bottom: 8px;"></i><span>Nenhuma etiqueta</span></div></td></tr>';
+    ? detail.open_labels.map(r => `
+        <tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors">
+          <td class="px-4 py-3 truncate max-w-[200px]" title="${r.label}">${agentDetailLabelBadge(r.label)}</td>
+          <td class="px-4 py-3 text-right"><span class="inline-flex items-center px-1.5 py-0.5 text-[0.75rem] font-semibold rounded-md bg-border/30 text-muted border border-border">${r.total}</span></td>
+        </tr>`).join('')
+    : '<tr><td colspan="2"><div class="p-6 text-center text-muted"><i class="bi bi-tags text-2xl block mb-2"></i><span class="text-sm">Nenhuma etiqueta</span></div></td></tr>';
 
   const chatwootBase = settings.chatwoot_base_url || '';
   const accountId = currentUser.account_id;
@@ -167,182 +177,219 @@ async function renderAgentDetailPage(agentId, days) {
   document.querySelector('#agent-page-open-table tbody').innerHTML = openConvs.length
     ? openConvs.map(r => {
         const url = `${chatwootBase}/app/accounts/${accountId}/search?q=${r.conversation_id}`;
-        const chInfo = AGENT_DETAIL_CHANNEL_MAP[r.channel] || AGENT_DETAIL_CHANNEL_MAP.other;
+        const chInfo = AGENT_DETAIL_CHANNEL_INFO[r.channel] || AGENT_DETAIL_CHANNEL_INFO.other;
         return `
-          <tr>
-            <td style="font-weight: 500;">${r.conversation_id}</td>
-            <td>${agentDetailPriorityBadge(r.priority)}</td>
-            <td>${r.subject || '-'}</td>
-            <td>${r.contact_name || '-'}</td>
-            <td>
-              <span class="badge ${chInfo.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 8px;">
-                <i class="bi ${chInfo.icon}"></i> ${chInfo.label}
-              </span>
+          <tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors">
+            <td class="px-3 py-3 font-semibold text-[0.75rem] text-text whitespace-nowrap">${r.conversation_id}</td>
+            <td class="px-3 py-3 truncate">${agentDetailPriorityBadge(r.priority)}</td>
+            <td class="px-3 py-3 font-medium text-[0.75rem] text-text truncate max-w-[150px]" title="${r.subject || ''}">${r.subject || '-'}</td>
+            <td class="px-3 py-3 font-medium text-[0.75rem] text-text truncate max-w-[120px]" title="${r.contact_name || ''}">${r.contact_name || '-'}</td>
+            <td class="px-3 py-3 truncate">
+              <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-[0.65rem] font-semibold rounded-md border whitespace-nowrap ${chInfo.classes}"><i class="bi ${chInfo.icon}"></i> ${chInfo.label}</span>
             </td>
-            <td>${agentDetailSlaBadge(r)}</td>
-            <td style="text-align: right;">
-              <button class="topbar-btn" style="padding: 4px 8px;" data-tooltip="Visualizar" onclick="window.open('${url}', '_blank')">
-                <i class="bi bi-box-arrow-up-right" style="font-size: 0.9rem;"></i>
+            <td class="px-3 py-3 truncate">${agentDetailSlaBadge(r)}</td>
+            <td class="px-3 py-3 text-right w-[40px]">
+              <button class="p-1.5 text-muted hover:text-text hover:bg-white/5 rounded-md transition-colors" data-tooltip="Visualizar" onclick="window.open('${url}', '_blank')">
+                <i class="bi bi-box-arrow-up-right text-[0.8rem]"></i>
               </button>
             </td>
           </tr>`;
       }).join('')
-    : '<tr><td colspan="7"><div class="empty-state" style="padding: 40px 20px;"><i class="bi bi-emoji-smile" style="color: var(--accent-green); font-size: 1.8rem; margin-bottom: 8px;"></i><span>Nenhuma conversa aberta no momento</span></div></td></tr>';
+    : '<tr><td colspan="7"><div class="py-12 text-center flex flex-col items-center"><i class="bi bi-emoji-smile text-[2.5rem] text-accent-green mb-3"></i><span class="text-[1.1rem] text-text font-medium">Caixa limpa!</span><span class="text-[0.9rem] text-muted">Nenhuma conversa aberta no momento.</span></div></td></tr>';
 }
 
 Screens.agent = {
   template: `
-    <div style="display:flex; align-items:center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
-      <div class="home-avatar" id="agent-page-avatar" style="width: 56px; height: 56px; font-size: 1.4rem; margin-bottom: 0; background: var(--accent);"></div>
-      <div>
-        <h2 id="agent-page-title" style="margin: 0 0 4px; font-size: 1.4rem;">Detalhes do Agente</h2>
-        <p class="muted-text" style="margin: 0; font-size: 0.9rem;">Visão individual de desempenho</p>
-      </div>
-    </div>
+    <div class="flex flex-col gap-6 w-full max-w-[1400px] mx-auto no-scrollbar">
 
-    <div class="filter-bar" style="margin-bottom: 24px;">
-      ${AGENT_DETAIL_DAYS_OPTIONS.map(d => `<button class="filter-btn${d === 30 ? ' active' : ''}" data-days="${d}">${d}D</button>`).join('')}
-    </div>
-
-    <div class="grid-2-cols" style="margin-bottom: 24px;">
-      <!-- KPIs do Agente -->
-      <div class="cards" style="margin-bottom: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
-        <div class="card" style="padding: 16px;">
-          <i class="bi bi-check2-circle card-icon" style="color: var(--accent-yellow); font-size: 1.4rem;"></i>
-          <span class="card-label">Resolvidas</span>
-          <span class="card-value" id="agent-page-resolved">-</span>
-        </div>
-        <div class="card" style="padding: 16px;">
-          <i class="bi bi-shield-check card-icon" style="color: var(--accent-green); font-size: 1.4rem;"></i>
-          <span class="card-label">SLA Atingido</span>
-          <span class="card-value" id="agent-page-sla">-</span>
-        </div>
-        <div class="card" style="padding: 16px; border-color: rgba(41,163,255,0.3); background: linear-gradient(135deg, rgba(41,163,255,0.05), var(--panel) 60%);">
-          <i class="bi bi-hourglass-split card-icon" style="color: var(--accent); font-size: 1.4rem;"></i>
-          <span class="card-label">Aguardando</span>
-          <span class="card-value" id="agent-page-awaiting">-</span>
-        </div>
-        <div class="card" style="padding: 16px; border-color: rgba(255,92,92,0.3); background: linear-gradient(135deg, rgba(255,92,92,0.05), var(--panel) 60%);">
-          <i class="bi bi-arrow-repeat card-icon" style="color: var(--accent-red); font-size: 1.4rem;"></i>
-          <span class="card-label">Reaberturas</span>
-          <span class="card-value" id="agent-page-reopened">-</span>
-        </div>
-      </div>
-
-      <!-- Comparativo com o Time -->
-      <div class="panel" id="agent-page-team-compare" style="display: none; flex-direction: column; justify-content: center; position: relative; overflow: hidden; min-width: 0;">
-        <div style="position: absolute; right: -20px; top: -20px; opacity: 0.05; pointer-events: none;">
-          <i class="bi bi-people-fill" style="font-size: 12rem;"></i>
-        </div>
-        
-        <div class="home-panel-header" style="margin-bottom: 20px; border-bottom: none; padding-bottom: 0; z-index: 1;">
-          <h3 style="margin: 0;"><i class="bi bi-diagram-3"></i> <span id="agent-page-team-name">Tempos Médios</span></h3>
-        </div>
-        
-        <div style="display: flex; flex-direction: column; gap: 16px; z-index: 1;">
-          <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="width: 40px; height: 40px; border-radius: 8px; background: rgba(52, 211, 153, 0.1); color: var(--accent-green); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
-                <i class="bi bi-stopwatch"></i>
-              </div>
-              <div>
-                <span class="muted-text" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">1ª Resposta</span>
-                <div style="font-size: 1.2rem; font-weight: 700; color: var(--text);" id="agent-page-frt">-</div>
-              </div>
-            </div>
-            <div style="text-align: right; background: var(--panel); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);" id="agent-page-cmp-frt"></div>
-          </div>
-
-          <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="width: 40px; height: 40px; border-radius: 8px; background: rgba(41, 163, 255, 0.1); color: #29a3ff; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
-                <i class="bi bi-check2-all"></i>
-              </div>
-              <div>
-                <span class="muted-text" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Resolução</span>
-                <div style="font-size: 1.2rem; font-weight: 700; color: var(--text);" id="agent-page-res">-</div>
-              </div>
-            </div>
-            <div style="text-align: right; background: var(--panel); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);" id="agent-page-cmp-res"></div>
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border">
+        <div class="flex items-center gap-4">
+          <div id="agent-page-avatar" class="w-14 h-14 rounded-xl flex items-center justify-center text-2xl font-bold shrink-0 bg-accent text-white shadow-sm glow-border"></div>
+          <div>
+            <h2 id="agent-page-title" class="m-0 mb-1 text-[1.4rem] font-bold text-text">Detalhes do Agente</h2>
+            <p class="m-0 text-[0.9rem] text-muted">Visão individual de desempenho</p>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Tabelas de Resolução -->
-    <div class="grid-3-cols" style="margin-bottom: 24px;">
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-flag"></i> Resolução por Prioridade</h3>
-        </div>
-        <div class="table-responsive" style="flex: 1; max-height: 250px;">
-          <table class="sortable" id="agent-page-priority-table">
-            <thead><tr><th data-sort="string">Prioridade</th><th data-sort="number" style="text-align: right;">Total</th><th data-sort="time" style="white-space: nowrap; text-align: right;">1ª Resposta</th><th data-sort="time" style="text-align: right;">Resolução</th></tr></thead>
-            <tbody></tbody>
-          </table>
+        <div id="agent-date-filters" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
+          ${AGENT_DETAIL_DAYS_OPTIONS.map(d => `<button id="btn-ag-${d}" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="${d}">${d}D</button>`).join('')}
         </div>
       </div>
 
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-chat-square-dots"></i> Resolução por Canal</h3>
+      <!-- Linha Superior: Cards e Comparativo -->
+      <div class="grid grid-cols-1 xl:grid-cols-[1fr_minmax(350px,auto)] gap-6 mb-2">
+        
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="panel-card bg-panel border border-border rounded-xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:border-accent-yellow/50 transition-colors group relative overflow-hidden">
+            <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:scale-110 transition-transform duration-300"><i class="bi bi-check2-circle text-[4rem] text-accent-yellow"></i></div>
+            <i class="bi bi-check2-circle text-2xl text-accent-yellow mb-2 relative z-10"></i>
+            <span class="text-[0.7rem] text-muted font-bold uppercase tracking-wider mb-1 relative z-10">Resolvidas</span>
+            <span class="text-2xl font-bold text-text leading-none relative z-10" id="agent-page-resolved">-</span>
+          </div>
+          <div class="panel-card bg-panel border border-border rounded-xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:border-accent-green/50 transition-colors group relative overflow-hidden">
+            <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:scale-110 transition-transform duration-300"><i class="bi bi-shield-check text-[4rem] text-accent-green"></i></div>
+            <i class="bi bi-shield-check text-2xl text-accent-green mb-2 relative z-10"></i>
+            <span class="text-[0.7rem] text-muted font-bold uppercase tracking-wider mb-1 relative z-10">SLA Atingido</span>
+            <span class="text-2xl font-bold text-text leading-none relative z-10" id="agent-page-sla">-</span>
+          </div>
+          <div class="panel-card bg-panel border border-border rounded-xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:border-accent-blue/50 transition-colors group relative overflow-hidden bg-gradient-to-br from-accent-blue/5 to-panel">
+            <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:scale-110 transition-transform duration-300"><i class="bi bi-hourglass-split text-[4rem] text-accent-blue"></i></div>
+            <i class="bi bi-hourglass-split text-2xl text-accent-blue mb-2 relative z-10"></i>
+            <span class="text-[0.7rem] text-muted font-bold uppercase tracking-wider mb-1 relative z-10">Aguardando</span>
+            <span class="text-2xl font-bold text-text leading-none relative z-10" id="agent-page-awaiting">-</span>
+          </div>
+          <div class="panel-card bg-panel border border-border rounded-xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:border-accent-red/50 transition-colors group relative overflow-hidden bg-gradient-to-br from-accent-red/5 to-panel">
+            <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:scale-110 transition-transform duration-300"><i class="bi bi-arrow-repeat text-[4rem] text-accent-red"></i></div>
+            <i class="bi bi-arrow-repeat text-2xl text-accent-red mb-2 relative z-10"></i>
+            <span class="text-[0.7rem] text-muted font-bold uppercase tracking-wider mb-1 relative z-10">Reaberturas</span>
+            <span class="text-2xl font-bold text-text leading-none relative z-10" id="agent-page-reopened">-</span>
+          </div>
         </div>
-        <div class="table-responsive" style="flex: 1; max-height: 250px;">
-          <table class="sortable" id="agent-page-channel-table">
-            <thead><tr><th data-sort="string">Canal</th><th data-sort="number" style="text-align: right;">Total</th><th data-sort="time" style="white-space: nowrap; text-align: right;">1ª Resposta</th><th data-sort="time" style="text-align: right;">Resolução</th></tr></thead>
-            <tbody></tbody>
-          </table>
+
+        <div id="agent-page-team-compare" class="panel-card hidden relative overflow-hidden bg-panel border border-border rounded-xl shadow-sm p-6 flex-col justify-center min-w-0">
+          <div class="absolute -right-6 -top-6 opacity-5 pointer-events-none">
+            <i class="bi bi-people-fill text-[12rem]"></i>
+          </div>
+          <div class="mb-4 z-10">
+            <h3 class="m-0 text-base font-semibold text-text flex items-center gap-2"><i class="bi bi-diagram-3 text-muted"></i> <span id="agent-page-team-name">Tempos Médios</span></h3>
+          </div>
+          <div class="flex flex-col gap-3 z-10">
+            <div class="bg-bg border border-border rounded-xl p-3 flex justify-between items-center shadow-inner">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-accent-green/10 text-accent-green flex items-center justify-center text-xl shrink-0"><i class="bi bi-stopwatch"></i></div>
+                <div class="flex flex-col">
+                  <span class="text-[0.7rem] text-muted font-bold uppercase tracking-wider mb-0.5">1ª Resposta</span>
+                  <span id="agent-page-frt" class="text-[1.15rem] font-bold text-text leading-none">-</span>
+                </div>
+              </div>
+              <div id="agent-page-cmp-frt" class="hidden"></div>
+            </div>
+            <div class="bg-bg border border-border rounded-xl p-3 flex justify-between items-center shadow-inner">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-blue-400/10 text-blue-400 flex items-center justify-center text-xl shrink-0"><i class="bi bi-check2-all"></i></div>
+                <div class="flex flex-col">
+                  <span class="text-[0.7rem] text-muted font-bold uppercase tracking-wider mb-0.5">Resolução</span>
+                  <span id="agent-page-res" class="text-[1.15rem] font-bold text-text leading-none">-</span>
+                </div>
+              </div>
+              <div id="agent-page-cmp-res" class="hidden"></div>
+            </div>
+          </div>
         </div>
+
       </div>
 
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-folder2-open"></i> Resolução por Assunto</h3>
+      <!-- Linha do Meio: 3 Tabelas -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden h-[340px]">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-flag text-muted"></i> Resolução por Prioridade</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto relative no-scrollbar">
+            <table id="agent-page-priority-table" class="sortable w-full text-left table-fixed">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="string" style="width: 120px;">Prioridade</th>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text bg-panel" data-sort="number" style="width: 60px;">Total</th>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text whitespace-nowrap bg-panel" data-sort="time">1ª Resp.</th>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text bg-panel" data-sort="time">Resol.</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
-        <div class="table-responsive" style="flex: 1; max-height: 250px;">
-          <table class="sortable" id="agent-page-subject-table">
-            <thead><tr><th data-sort="string">Assunto</th><th data-sort="number" style="text-align: right;">Total</th><th data-sort="time" style="white-space: nowrap; text-align: right;">1ª Resposta</th><th data-sort="time" style="text-align: right;">Resolução</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
 
-    <!-- Conversas Abertas e Etiquetas -->
-    <div class="grid-3-cols" style="grid-template-columns: 1fr 300px;">
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-inbox"></i> Conversas Abertas</h3>
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden h-[340px]">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-chat-square-dots text-muted"></i> Resolução por Canal</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto relative no-scrollbar">
+            <table id="agent-page-channel-table" class="sortable w-full text-left table-fixed">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="string" style="width: 120px;">Canal</th>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text bg-panel" data-sort="number" style="width: 60px;">Total</th>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text whitespace-nowrap bg-panel" data-sort="time">1ª Resp.</th>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text bg-panel" data-sort="time">Resol.</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
-        <div class="table-responsive" style="flex: 1; max-height: 400px;">
-          <table class="sortable" id="agent-page-open-table">
-            <thead>
-              <tr>
-                <th data-sort="number">ID</th>
-                <th data-sort="string">Pr.</th>
-                <th data-sort="string">Assunto</th>
-                <th data-sort="string">Cliente</th>
-                <th data-sort="string">Canal</th>
-                <th data-sort="time">SLA</th>
-                <th style="text-align: right;">Ação</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden h-[340px]">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-folder2-open text-muted"></i> Resolução por Assunto</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto relative no-scrollbar">
+            <table id="agent-page-subject-table" class="sortable w-full text-left table-fixed">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="string">Assunto</th>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text bg-panel" data-sort="number" style="width: 60px;">Total</th>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text whitespace-nowrap bg-panel" data-sort="time" style="width: 70px;">1ª Resp.</th>
+                  <th class="px-3 py-2.5 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text bg-panel" data-sort="time" style="width: 70px;">Resol.</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
+
       </div>
 
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-tags"></i> Abertas por Etiqueta</h3>
+      <!-- Linha Inferior -->
+      <div class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6 mb-6 items-start">
+        
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden h-[380px]">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-inbox text-accent-blue glow-text"></i> Conversas Abertas</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-x-auto overflow-y-auto relative no-scrollbar">
+            <table id="agent-page-open-table" class="sortable w-full text-left table-auto min-w-[700px]">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-3 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="number">ID</th>
+                  <th class="px-3 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="string">Pr.</th>
+                  <th class="px-3 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="string">Assunto</th>
+                  <th class="px-3 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="string">Cliente</th>
+                  <th class="px-3 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="string">Canal</th>
+                  <th class="px-3 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="time">SLA</th>
+                  <th class="px-3 py-3 w-[40px] bg-panel"></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
-        <div class="table-responsive" style="flex: 1; max-height: 400px;">
-          <table class="sortable" id="agent-page-labels-table">
-            <thead><tr><th data-sort="string" style="width: 100%;">Etiqueta</th><th data-sort="number" style="text-align: right;">Total</th></tr></thead>
-            <tbody></tbody>
-          </table>
+
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden h-[380px]">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-tags text-muted"></i> Abertas por Etiqueta</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto relative no-scrollbar">
+            <table id="agent-page-labels-table" class="sortable w-full text-left table-fixed">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-4 py-3 text-[0.65rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text w-full bg-panel" data-sort="string">Etiqueta</th>
+                  <th class="px-4 py-3 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text w-[80px] bg-panel" data-sort="number">Total</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
+
       </div>
+
     </div>
   `,
   load: async function () {
@@ -361,26 +408,27 @@ Screens.agent = {
 
     let selectedDays = 30;
 
-    document.querySelectorAll('.filter-btn').forEach(b => {
-      b.classList.toggle('active', Number(b.dataset.days) === selectedDays);
-    });
+    const initialBtnId = `btn-ag-${selectedDays}`;
+    if (document.getElementById(initialBtnId)) {
+        window.handleDateFilterClick('agent-date-filters', initialBtnId, null);
+    }
 
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    document.querySelectorAll('#agent-date-filters .filter-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         selectedDays = Number(btn.dataset.days);
         
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+        window.handleDateFilterClick('agent-date-filters', btn.id, null);
         
         const content = document.getElementById('content');
-        content.classList.add('loading');
+        content.classList.add('opacity-50', 'pointer-events-none');
         
         await renderAgentDetailPage(agentId, selectedDays);
         
-        content.classList.remove('loading');
+        content.classList.remove('opacity-50', 'pointer-events-none');
       });
     });
 
+    await loadAgentDetailChannelInfo();
     await renderAgentDetailPage(agentId, selectedDays);
   },
 };

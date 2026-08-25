@@ -6,37 +6,50 @@ const KPI_COLUMNS = {
   'breakdown': [['conversation_id', 'ID'], ['contact_name', 'Cliente'], ['assignee_name', 'Agente'], ['status', 'Status'], ['priority', 'Prioridade'], ['channel', 'Canal'], ['age_minutes', 'Aberta há']],
 };
 
-// Mapas Encurtados para caber perfeitamente na tabela
-const TODAY_CHANNEL_MAP = { 
-  whatsapp: { label: 'WPP', badge: 'badge-green', icon: 'bi-whatsapp' }, 
-  email: { label: 'E-mail', badge: 'badge-blue', icon: 'bi-envelope' }, 
-  other: { label: 'Out', badge: 'badge-neutral', icon: 'bi-chat-dots' } 
-};
+const TODAY_CHANNEL_PALETTE = ['#a78bfa', '#fb923c', '#38bdf8', '#f472b6', '#4ade80', '#facc15'];
+
+let TODAY_CHANNEL_INFO = {};
+
+async function loadTodayChannelInfo() {
+  const channels = await (await fetch('/monitor/api/channels')).json();
+  TODAY_CHANNEL_INFO = {};
+  let paletteIdx = 0;
+  channels.forEach(c => {
+    if (c.channel_key === 'whatsapp') {
+      TODAY_CHANNEL_INFO[c.channel_key] = { label: 'WPP', color: '#34d399', classes: 'text-accent-green bg-accent-green/10 border-accent-green/20', icon: 'bi-whatsapp' };
+    } else if (c.channel_key === 'email') {
+      TODAY_CHANNEL_INFO[c.channel_key] = { label: 'E-mail', color: '#29a3ff', classes: 'text-blue-400 bg-blue-400/10 border-blue-400/20', icon: 'bi-envelope' };
+    } else {
+      const shortLabel = c.channel_name.length > 6 ? c.channel_name.slice(0, 6) : c.channel_name;
+      TODAY_CHANNEL_INFO[c.channel_key] = {
+        label: shortLabel,
+        color: TODAY_CHANNEL_PALETTE[paletteIdx % TODAY_CHANNEL_PALETTE.length],
+        classes: 'text-muted bg-border/30 border-border',
+        icon: 'bi-chat-dots',
+      };
+      paletteIdx++;
+    }
+  });
+  TODAY_CHANNEL_INFO.other = { label: 'Out', color: '#9296b8', classes: 'text-muted bg-border/30 border-border', icon: 'bi-chat-dots' };
+}
 
 const TODAY_PRIORITY_MAP = { 
-  urgent: { label: 'Urg', badge: 'badge-red', icon: 'bi-exclamation-triangle-fill' }, 
-  high: { label: 'Alt', badge: 'badge-red', icon: 'bi-arrow-up-circle-fill' }, 
-  medium: { label: 'Med', badge: 'badge-yellow', icon: 'bi-dash-circle-fill' }, 
-  low: { label: 'Bxa', badge: 'badge-neutral', icon: 'bi-arrow-down-circle-fill' }, 
-  none: { label: 'Nen', badge: 'badge-neutral', icon: 'bi-info-circle-fill' } 
+  urgent: { label: 'Urg', classes: 'text-accent-red bg-accent-red/10 border-accent-red/20', icon: 'bi-exclamation-triangle-fill' }, 
+  high: { label: 'Alt', classes: 'text-accent-red bg-accent-red/10 border-accent-red/20', icon: 'bi-arrow-up-circle-fill' }, 
+  medium: { label: 'Med', classes: 'text-accent-yellow bg-accent-yellow/10 border-accent-yellow/20', icon: 'bi-dash-circle-fill' }, 
+  low: { label: 'Bxa', classes: 'text-muted bg-border/30 border-border', icon: 'bi-arrow-down-circle-fill' }, 
+  none: { label: 'Nen', classes: 'text-muted bg-border/30 border-border', icon: 'bi-info-circle-fill' } 
 };
 
-// Formatação de tempo inteligente (Dias e Horas)
 function formatDetailedDuration(totalMinutes) {
   if (totalMinutes === null || totalMinutes === undefined) return '-';
   const minutes = Math.round(totalMinutes);
   if (minutes < 60) return `${minutes}m`;
-  
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  
-  if (hours < 24) {
-    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
-  }
-  
+  if (hours < 24) return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
   const days = Math.floor(hours / 24);
   const remainingHours = hours % 24;
-  
   if (remainingHours === 0) return `${days}d`;
   return `${days}d ${remainingHours}h`;
 }
@@ -44,30 +57,30 @@ function formatDetailedDuration(totalMinutes) {
 function todayPriorityBadge(val) {
   const prio = String(val ?? 'none').toLowerCase();
   const info = TODAY_PRIORITY_MAP[prio] || TODAY_PRIORITY_MAP.none;
-  return `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 2px 6px; font-size: 0.65rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
+  return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[0.65rem] font-semibold rounded-md border whitespace-nowrap ${info.classes}"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
 }
 
 function todayChannelBadge(val) {
-  const info = TODAY_CHANNEL_MAP[val] || TODAY_CHANNEL_MAP.other;
-  return `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 2px 6px; font-size: 0.65rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
+  const info = TODAY_CHANNEL_INFO[val] || TODAY_CHANNEL_INFO.other;
+  return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[0.65rem] font-semibold rounded-md border whitespace-nowrap ${info.classes}"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
 }
 
 function todaySlaBadge(minutesRemaining) {
+  const baseCls = "inline-flex items-center gap-1 px-1.5 py-0.5 text-[0.65rem] font-semibold rounded-md border whitespace-nowrap";
   if (minutesRemaining === null || minutesRemaining === undefined) {
-    return `<span class="badge badge-neutral" style="display:inline-flex; align-items:center; gap:4px; padding: 2px 6px; font-size: 0.65rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"><i class="bi bi-clock-history"></i> -</span>`;
+    return `<span class="${baseCls} bg-border/30 text-muted border-border"><i class="bi bi-clock-history"></i> -</span>`;
   }
   const late = minutesRemaining < 0;
   const absMinutes = Math.abs(minutesRemaining);
   const icon = late ? 'bi-alarm-fill' : 'bi-stopwatch-fill';
-  // Omitindo as palavras "Atrasado/Em" para ganhar espaço (a cor já indica a situação)
-  return `<span class="badge ${late ? 'badge-red' : 'badge-green'}" style="white-space:nowrap; display:inline-flex; align-items:center; gap:4px; padding: 2px 6px; font-size: 0.65rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"><i class="bi ${icon}"></i> ${formatDetailedDuration(absMinutes)}</span>`;
+  const color = late ? 'text-accent-red bg-accent-red/10 border-accent-red/20' : 'text-accent-green bg-accent-green/10 border-accent-green/20';
+  return `<span class="${baseCls} ${color}"><i class="bi ${icon}"></i> ${formatDetailedDuration(absMinutes)}</span>`;
 }
 
-function rankTableRow(name, valueText, highlightColor = null) {
-  const style = highlightColor ? `color: ${highlightColor}; font-weight: 600;` : '';
-  return `<tr>
-            <td style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;" title="${name}">${name}</td>
-            <td style="text-align: right; ${style}">${valueText}</td>
+function rankTableRow(name, valueText, highlightClass = 'text-text') {
+  return `<tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors">
+            <td class="px-4 py-3 text-[0.85rem] font-medium truncate max-w-[150px] text-text" title="${name}">${name}</td>
+            <td class="px-4 py-3 text-[0.85rem] font-bold text-right ${highlightClass}">${valueText}</td>
           </tr>`;
 }
 
@@ -83,216 +96,255 @@ async function openKpiModal(kpi, endpointOverride = null, titleOverride = null) 
   const chatwootBase = settings.chatwoot_base_url || '';
   const accountId = currentUser.account_id;
   
-  const defaultTitle = document.querySelector(`[data-kpi="${kpi}"] .card-label`)?.textContent || 'Detalhes';
+  const defaultTitle = document.querySelector(`[data-kpi="${kpi}"] .kpi-title`)?.textContent || 'Detalhes';
   
-  document.getElementById('kpi-modal-title').textContent = titleOverride || defaultTitle;  
-  document.querySelector('#kpi-modal-table thead').innerHTML = '<tr>' + cols.map(c => `<th>${c[1]}</th>`).join('') + '<th style="text-align: right;">Ação</th></tr>';
+  document.getElementById('kpi-modal-title').innerHTML = `<i class="bi bi-table text-accent-blue mr-2"></i> ${titleOverride || defaultTitle}`;  
+  document.querySelector('#kpi-modal-table thead').innerHTML = '<tr>' + cols.map(c => `<th class="px-3 py-3 text-[0.75rem] font-bold text-muted uppercase tracking-wider sticky top-0 bg-panel shadow-[0_1px_0_var(--border)]">${c[1]}</th>`).join('') + '<th class="px-3 py-3 text-[0.75rem] font-bold text-muted uppercase tracking-wider text-right sticky top-0 bg-panel shadow-[0_1px_0_var(--border)]">Ação</th></tr>';
   
-  document.querySelector('#kpi-modal-table tbody').innerHTML = rows.map(r => {
+  document.querySelector('#kpi-modal-table tbody').innerHTML = rows.length > 0 
+  ? rows.map(r => {
     const url = `${chatwootBase}/app/accounts/${accountId}/search?q=${r.conversation_id}`;
     
     const rowContent = cols.map(c => {
       let val = r[c[0]];
-
-      if (c[0] === 'priority') {
-        val = todayPriorityBadge(val);
-      } else if (c[0] === 'channel') {
-        val = todayChannelBadge(val);
-      } else if (c[0] === 'status') {
+      if (c[0] === 'priority') val = todayPriorityBadge(val);
+      else if (c[0] === 'channel') val = todayChannelBadge(val);
+      else if (c[0] === 'status') {
         const status = String(val ?? '-').toLowerCase();
-        const statusBadge = status === 'open' ? 'badge-green' : 'badge-neutral';
-        val = `<span class="badge ${statusBadge}">${val}</span>`;
-      } else if (c[0] === 'age_minutes') {
-        val = formatDetailedDuration(val);
-      } else {
-        val = val ?? '-';
-      }
+        const color = status === 'open' ? 'text-accent-green bg-accent-green/10 border-accent-green/20' : 'text-muted bg-border/30 border-border';
+        val = `<span class="inline-flex items-center px-1.5 py-0.5 text-[0.65rem] font-semibold rounded-md border whitespace-nowrap ${color}">${val}</span>`;
+      } else if (c[0] === 'age_minutes') val = formatDetailedDuration(val);
+      else val = val ?? '-';
       
-      return `<td>${val}</td>`;
+      return `<td class="px-3 py-3 text-[0.8rem] text-text border-b border-border/50 truncate">${val}</td>`;
     }).join('');
 
-    return `<tr>${rowContent}<td style="text-align: right;"><button class="topbar-btn" style="padding: 4px 8px;" data-tooltip="Visualizar" onclick="window.open('${url}', '_blank')"><i class="bi bi-box-arrow-up-right" style="font-size: 0.9rem;"></i></button></td></tr>`;
-  }).join('');
+    return `<tr class="hover:bg-panel-light transition-colors">${rowContent}<td class="px-3 py-3 border-b border-border/50 text-right"><button class="p-1.5 text-muted hover:text-text hover:bg-white/5 rounded-md transition-colors" data-tooltip="Visualizar" onclick="window.open('${url}', '_blank')"><i class="bi bi-box-arrow-up-right text-[0.85rem]"></i></button></td></tr>`;
+  }).join('')
+  : `<tr><td colspan="${cols.length + 1}"><div class="py-10 text-center"><i class="bi bi-inbox text-3xl text-border mb-2 block"></i><span class="text-sm text-muted">Sem dados para exibir</span></div></td></tr>`;
   
   document.getElementById('kpi-modal').classList.remove('hidden');
 }
 
-function closeKpiModal() {
-  document.getElementById('kpi-modal').classList.add('hidden');
-}
+function closeKpiModal() { document.getElementById('kpi-modal').classList.add('hidden'); }
 
 Screens.today = {
   template: `
-    <div style="display:flex; align-items:center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
-      <div class="home-avatar" style="width: 56px; height: 56px; font-size: 1.4rem; margin-bottom: 0; background: var(--accent-blue);">
-        <i class="bi bi-calendar2-day"></i>
-      </div>
-      <div>
-        <h2 style="margin: 0 0 4px; font-size: 1.4rem;">Visão Hoje</h2>
-        <p class="muted-text" style="margin: 0; font-size: 0.9rem;">Métricas e acompanhamento do dia atual</p>
-      </div>
-    </div>
-
-    <div class="chart-row-top">
-      <div class="chart-hourly panel" style="display: flex; flex-direction: column; min-width: 0; margin-bottom: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-bar-chart"></i> Conversas por hora</h3>
-        </div>
-        <div class="canvas-container" style="flex: 1; min-height: 280px; min-width: 0;">
-          <canvas id="chart-hourly"></canvas>
-        </div>
-      </div>
+    <div class="flex flex-col gap-6 w-full max-w-[1400px] mx-auto no-scrollbar">
       
-      <div class="kpi-clickable-group" style="display: flex; flex-direction: column; gap: 16px; min-width: 0;">
-        <div class="kpi-clickable card" data-kpi="created-today" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left; margin: 0;">
-          <div class="kpi-header" style="margin-bottom: 4px;">
-            <span class="card-label" style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Criadas hoje</span>
-            <i class="bi bi-inbox" style="font-size: 1.2rem; color: var(--accent-blue);"></i>
-          </div>
-          <div style="display: flex; align-items: baseline; gap: 12px;">
-            <span class="card-value" id="kpi-created-today" style="font-size: 2.5rem;">-</span>
+      <!-- Top Row: Title & Quick KPIs -->
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <!-- Title Widget -->
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex items-center p-5 gap-4 col-span-1 lg:col-span-1">
+          <div class="w-14 h-14 rounded-xl flex items-center justify-center text-2xl shrink-0 bg-accent-blue text-white shadow-sm glow-border"><i class="bi bi-calendar2-day"></i></div>
+          <div class="flex-1 min-w-0">
+            <h2 class="m-0 mb-1 text-base font-bold text-text truncate">Visão Hoje</h2>
+            <p class="m-0 text-xs text-muted truncate">Acompanhamento do dia</p>
           </div>
         </div>
-        
-        <div class="kpi-clickable card" data-kpi="open" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left; margin: 0;">
-          <div class="kpi-header" style="margin-bottom: 4px;">
-            <span class="card-label" style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Abertas</span>
-            <i class="bi bi-envelope-open" style="font-size: 1.2rem; color: var(--accent-yellow);"></i>
+
+        <!-- KPIs Clicáveis -->
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm p-5 flex items-center gap-4 cursor-pointer hover:border-accent-blue/50 transition-colors group relative overflow-hidden col-span-1" data-kpi="created-today" onclick="openKpiModal('created-today')">
+          <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:scale-110 transition-transform duration-300"><i class="bi bi-inbox text-[5rem] text-accent-blue"></i></div>
+          <div class="w-12 h-12 rounded-lg bg-accent-blue/10 text-accent-blue flex items-center justify-center text-xl shrink-0 relative z-10"><i class="bi bi-inbox"></i></div>
+          <div class="relative z-10">
+            <span class="block text-[0.7rem] text-muted font-bold uppercase tracking-wider kpi-title">Criadas Hoje</span>
+            <span id="kpi-created-today" class="block text-2xl font-bold text-text">-</span>
           </div>
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-            <span class="card-value" id="kpi-open" style="font-size: 2.2rem; line-height: 1;">-</span>
+        </div>
+
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm p-4 flex flex-col justify-center cursor-pointer hover:border-accent-yellow/50 transition-colors group relative overflow-hidden col-span-1" data-kpi="open" onclick="openKpiModal('open')">
+          <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:scale-110 transition-transform duration-300"><i class="bi bi-envelope-open text-[5rem] text-accent-yellow"></i></div>
+          <div class="flex justify-between items-center mb-1 relative z-10">
+            <div class="flex items-center gap-2">
+              <i class="bi bi-envelope-open text-accent-yellow text-sm"></i>
+              <span class="text-[0.7rem] text-muted font-bold uppercase tracking-wider kpi-title">Abertas</span>
+            </div>
             <div id="kpi-open-badge"></div>
           </div>
-          <div id="kpi-open-bars" style="width: 100%; display: flex; flex-direction: column; gap: 6px;"></div>
+          <span id="kpi-open" class="block text-2xl font-bold text-text relative z-10 mb-2">-</span>
+          <div id="kpi-open-bars" class="w-full flex flex-col gap-1 relative z-10"></div>
         </div>
-        
-        <div class="kpi-clickable kpi-alert card" data-kpi="unassigned" style="flex: 1; padding: 20px; align-items: flex-start; text-align: left; margin: 0;">
-          <div class="kpi-header" style="margin-bottom: 4px;">
-            <span class="card-label" style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Não atribuídas</span>
-            <i class="bi bi-exclamation-octagon" style="font-size: 1.2rem; color: var(--accent-red);"></i>
-          </div>
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-            <span class="card-value" id="kpi-unassigned" style="font-size: 2.2rem; line-height: 1; color: var(--accent-red);">-</span>
+
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm p-4 flex flex-col justify-center cursor-pointer hover:border-accent-red/50 transition-colors group relative overflow-hidden col-span-1" data-kpi="unassigned" onclick="openKpiModal('unassigned')">
+          <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:scale-110 transition-transform duration-300"><i class="bi bi-exclamation-octagon text-[5rem] text-accent-red"></i></div>
+          <div class="flex justify-between items-center mb-1 relative z-10">
+            <div class="flex items-center gap-2">
+              <i class="bi bi-exclamation-octagon text-accent-red text-sm"></i>
+              <span class="text-[0.7rem] text-muted font-bold uppercase tracking-wider kpi-title">Não Atribuídas</span>
+            </div>
             <div id="kpi-unassigned-badge"></div>
           </div>
-          <div id="kpi-unassigned-bars" style="width: 100%; display: flex; flex-direction: column; gap: 6px;"></div>
+          <span id="kpi-unassigned" class="block text-2xl font-bold text-accent-red relative z-10 mb-2">-</span>
+          <div id="kpi-unassigned-bars" class="w-full flex flex-col gap-1 relative z-10"></div>
         </div>
       </div>
-    </div>
 
-    <div class="grid-3-cols" style="margin-bottom: 24px;">
-      <div class="card" style="flex-direction: row; justify-content: flex-start; gap: 16px; padding: 20px;">
-        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(52, 211, 153, 0.1); color: var(--accent-green); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
-          <i class="bi bi-stopwatch"></i>
-        </div>
-        <div style="text-align: left;">
-          <span class="card-label" style="margin: 0 0 4px;">1ª Resposta (Média)</span>
-          <span class="card-value" id="card-frt" style="font-size: 1.5rem;">-</span>
-        </div>
-      </div>
-      <div class="card" style="flex-direction: row; justify-content: flex-start; gap: 16px; padding: 20px;">
-        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(41, 163, 255, 0.1); color: #29a3ff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
-          <i class="bi bi-check2-all"></i>
-        </div>
-        <div style="text-align: left;">
-          <span class="card-label" style="margin: 0 0 4px;">Resolução (Média)</span>
-          <span class="card-value" id="card-res" style="font-size: 1.5rem;">-</span>
-        </div>
-      </div>
-      <div class="card" style="flex-direction: row; justify-content: flex-start; gap: 16px; padding: 20px;">
-        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(255, 194, 71, 0.1); color: var(--accent-yellow); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
-          <i class="bi bi-shield-check"></i>
-        </div>
-        <div style="text-align: left;">
-          <span class="card-label" style="margin: 0 0 4px;">SLA Atingido</span>
-          <span class="card-value" id="card-sla-met" style="font-size: 1.5rem;">-</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel" style="margin-bottom: 24px;">
-      <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-        <h3 style="margin: 0;"><i class="bi bi-diagram-3"></i> Detalhamento de Fila</h3>
-      </div>
-      
-      <div class="grid-3-cols" style="margin-bottom: 0;">
-        <div class="card kpi-clickable" data-kpi="awaiting-agent" style="margin: 0; padding: 24px 16px; border-color: rgba(41,163,255,0.3); background: linear-gradient(135deg, rgba(41,163,255,0.05), var(--panel) 60%); display: flex; flex-direction: column; align-items: center; justify-content: center;">
-          <i class="bi bi-hourglass-split" style="font-size: 1.8rem; color: var(--accent-blue); margin-bottom: 12px;"></i>
-          <span class="card-label" style="margin: 0 0 4px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">Aguardando Agente</span>
-          <span class="card-value" id="kpi-awaiting-agent" style="font-size: 2.5rem; line-height: 1;">-</span>
-        </div>
-
-        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px;">
-          <span class="muted-text" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 12px;">Por Prioridade</span>
-          <div id="priority-list" style="display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start;"></div>
-        </div>
-
-        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px;">
-          <span class="muted-text" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 12px;">Por Etiqueta</span>
-          <div id="label-list" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 160px; overflow-y: auto; padding-right: 4px; align-content: flex-start;"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="attention-assignees-row">
-      <div class="panel panel-attention" style="display: flex; flex-direction: column; min-width: 0; margin-bottom: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-exclamation-triangle"></i> Precisam de Atenção</h3>
-        </div>
-        <div class="table-responsive" style="flex: 1; max-height: 350px; overflow-x: hidden;">
-          <table id="attention-table" style="table-layout: fixed; width: 100%;">
-            <thead>
-              <tr>
-                <th style="font-size: 0.7rem; width: 8%;">ID</th>
-                <th style="font-size: 0.7rem; width: 18%;">Cliente</th>
-                <th style="font-size: 0.7rem; width: 18%;">Assunto</th>
-                <th style="font-size: 0.7rem; width: 14%;">Agente</th>
-                <th style="font-size: 0.7rem; width: 11%;">Pr.</th>
-                <th style="font-size: 0.7rem; width: 13%;">Canal</th>
-                <th style="font-size: 0.7rem; width: 14%;">SLA</th>
-                <th style="text-align: right; font-size: 0.7rem; width: 4%;"></th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-      
-      <div style="display: flex; flex-direction: column; gap: 18px; min-width: 0;">
-        <div class="panel" style="display: flex; flex-direction: column; flex: 1; min-width: 0; margin-bottom: 0;">
-          <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-            <h3 style="margin: 0;"><i class="bi bi-person-lines-fill"></i> Atribuições Hoje</h3>
+      <!-- Main Row: Chart & Performance -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Chart Panel -->
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col lg:col-span-2">
+          <div class="px-5 py-4 border-b border-border flex justify-between items-center cursor-pointer select-none" onclick="togglePanel(this)">
+            <h3 class="m-0 text-sm font-semibold flex items-center gap-2 text-text"><i class="bi bi-bar-chart-fill text-accent-blue"></i> Conversas por Hora</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
           </div>
-          <div class="table-responsive" style="flex: 1; max-height: 250px;">
-            <table id="table-today-assignees" class="sortable">
-              <thead><tr><th data-sort="string">Agente</th><th data-sort="number" style="text-align: right;">Atribuídas</th></tr></thead>
+          <div class="panel-content p-5 w-full">
+            <div class="relative w-full h-[250px]">
+              <canvas id="chart-hourly"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance / SLA Panel -->
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col lg:col-span-1">
+          <div class="px-5 py-4 border-b border-border flex justify-between items-center cursor-pointer select-none" onclick="togglePanel(this)">
+            <h3 class="m-0 text-sm font-semibold flex items-center gap-2 text-text"><i class="bi bi-speedometer2 text-accent-green"></i> Desempenho e SLA</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content p-5 flex flex-col gap-4 flex-1 justify-center">
+            
+            <div class="flex items-center justify-between p-3 bg-panel-light border border-border rounded-lg">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-accent-green/10 text-accent-green flex items-center justify-center text-lg"><i class="bi bi-stopwatch"></i></div>
+                <span class="text-xs text-muted font-bold uppercase tracking-wider">1ª Resposta (Média)</span>
+              </div>
+              <span id="card-frt" class="text-lg font-bold text-text">-</span>
+            </div>
+
+            <div class="flex items-center justify-between p-3 bg-panel-light border border-border rounded-lg">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-blue-400/10 text-blue-400 flex items-center justify-center text-lg"><i class="bi bi-check2-all"></i></div>
+                <span class="text-xs text-muted font-bold uppercase tracking-wider">Resolução (Média)</span>
+              </div>
+              <span id="card-res" class="text-lg font-bold text-text">-</span>
+            </div>
+
+            <div class="flex items-center justify-between p-3 bg-panel-light border border-border rounded-lg">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-accent-yellow/10 text-accent-yellow flex items-center justify-center text-lg"><i class="bi bi-shield-check"></i></div>
+                <span class="text-xs text-muted font-bold uppercase tracking-wider">SLA Atingido</span>
+              </div>
+              <span id="card-sla-met" class="text-lg font-bold text-text">-</span>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Breakdown Row -->
+      <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col mb-2">
+        <div class="px-5 py-4 border-b border-border flex justify-between items-center cursor-pointer select-none" onclick="togglePanel(this)">
+          <h3 class="m-0 text-sm font-semibold flex items-center gap-2 text-text"><i class="bi bi-diagram-3-fill text-muted"></i> Detalhamento de Fila</h3>
+          <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+        </div>
+        
+        <div class="panel-content p-5">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <div class="bg-gradient-to-br from-accent-blue/5 to-bg border border-accent-blue/20 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer hover:border-accent-blue hover:shadow-md transition-all glow-border" data-kpi="awaiting-agent" onclick="openKpiModal('awaiting-agent')">
+              <i class="bi bi-hourglass-split text-2xl text-accent-blue mb-2"></i>
+              <span class="text-[0.7rem] text-muted font-bold uppercase tracking-wider mb-1 kpi-title">Aguardando Agente</span>
+              <span id="kpi-awaiting-agent" class="text-3xl font-bold text-text leading-none">-</span>
+            </div>
+
+            <div class="bg-panel-light border border-border rounded-xl p-4 flex flex-col">
+              <span class="block text-[0.7rem] text-muted font-bold uppercase tracking-wider mb-3">Por Prioridade</span>
+              <div id="priority-list" class="flex flex-wrap gap-2 content-start overflow-y-auto max-h-[120px] no-scrollbar"></div>
+            </div>
+
+            <div class="bg-panel-light border border-border rounded-xl p-4 flex flex-col">
+              <span class="block text-[0.7rem] text-muted font-bold uppercase tracking-wider mb-3">Por Etiqueta</span>
+              <div id="label-list" class="flex flex-wrap gap-2 content-start overflow-y-auto max-h-[120px] no-scrollbar"></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Tables Row -->
+      <div class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6 mb-6 items-start">
+        
+        <!-- Attention Table -->
+        <div class="panel-card bg-panel border border-border border-t-2 border-t-accent-red rounded-xl shadow-sm flex flex-col overflow-hidden max-h-[400px]">
+           <div class="px-5 py-4 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-sm font-semibold flex items-center gap-2 text-text"><i class="bi bi-exclamation-triangle-fill text-accent-red glow-text"></i> Precisam de Atenção</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto no-scrollbar relative">
+            <table id="attention-table" class="w-full text-left min-w-[700px]">
+              <thead class="sticky top-0 bg-panel z-10 shadow-[0_1px_0_var(--border)]">
+                <tr>
+                  <th class="px-4 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider bg-panel">ID</th>
+                  <th class="px-4 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider bg-panel">Cliente / Assunto</th>
+                  <th class="px-4 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider bg-panel">Agente</th>
+                  <th class="px-4 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider bg-panel">Pr. / Canal</th>
+                  <th class="px-4 py-3 text-[0.7rem] font-bold text-muted uppercase tracking-wider bg-panel">SLA</th>
+                  <th class="px-4 py-3 w-[50px] bg-panel"></th>
+                </tr>
+              </thead>
               <tbody></tbody>
             </table>
           </div>
         </div>
         
-        <div class="panel" style="display: flex; flex-direction: column; flex: 1; min-width: 0; margin-bottom: 0;">
-          <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-            <h3 style="margin: 0;"><i class="bi bi-trophy"></i> Resoluções Hoje</h3>
+        <!-- Rankings -->
+        <div class="flex flex-col gap-6 min-w-0">
+          
+          <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 flex-1 max-h-[200px]">
+            <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+              <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-person-lines-fill text-muted"></i> Atribuições Hoje</h3>
+              <button class="text-muted hover:text-text bg-transparent border-none p-0.5"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+            </div>
+            <div class="panel-content flex-1 overflow-y-auto no-scrollbar relative">
+              <table id="table-today-assignees" class="sortable w-full text-left">
+                <thead class="sticky top-0 bg-panel z-10 shadow-[0_1px_0_var(--border)]">
+                  <tr>
+                    <th class="px-4 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="string">Agente</th>
+                    <th class="px-4 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text bg-panel" data-sort="number">Qtd</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </div>
-          <div class="table-responsive" style="flex: 1; max-height: 250px;">
-            <table id="table-today-solvers" class="sortable">
-              <thead><tr><th data-sort="string">Agente</th><th data-sort="number" style="text-align: right;">Resolvidas</th></tr></thead>
-              <tbody></tbody>
-            </table>
+          
+          <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 flex-1 max-h-[200px]">
+            <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+              <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-trophy-fill text-accent-yellow"></i> Resoluções Hoje</h3>
+              <button class="text-muted hover:text-text bg-transparent border-none p-0.5"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+            </div>
+            <div class="panel-content flex-1 overflow-y-auto no-scrollbar relative">
+              <table id="table-today-solvers" class="sortable w-full text-left">
+                <thead class="sticky top-0 bg-panel z-10 shadow-[0_1px_0_var(--border)]">
+                  <tr>
+                    <th class="px-4 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider cursor-pointer hover:text-text bg-panel" data-sort="string">Agente</th>
+                    <th class="px-4 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider text-right cursor-pointer hover:text-text bg-panel" data-sort="number">Qtd</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </div>
+
         </div>
       </div>
+
     </div>
 
-    <div id="kpi-modal" class="modal hidden">
-      <div class="modal-content" style="max-width: 1000px;">
-        <button class="modal-close" onclick="closeKpiModal()">&times;</button>
-        <h3 id="kpi-modal-title" style="margin-top: 0; padding-bottom: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
-          <i class="bi bi-table" style="color: var(--accent-blue);"></i> Detalhes
-        </h3>
-        <div class="table-responsive" style="max-height: 65vh; margin-top: 10px;">
-          <table id="kpi-modal-table"><thead></thead><tbody></tbody></table>
+    <!-- Modal KPIs (Mantido igual) -->
+    <div id="kpi-modal" class="hidden fixed inset-0 bg-bg/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-5">
+      <div class="bg-panel border border-border rounded-2xl w-full max-w-[1000px] flex flex-col relative shadow-[0_10px_40px_rgba(0,0,0,0.6)] overflow-hidden">
+        <button class="absolute top-4 right-5 bg-transparent border-none text-muted hover:text-text text-2xl cursor-pointer z-10 transition-colors" onclick="closeKpiModal()">&times;</button>
+        <div class="p-5 border-b border-border bg-panel-light/50">
+           <h3 id="kpi-modal-title" class="m-0 text-lg font-bold flex items-center"></h3>
+        </div>
+        <div class="p-0 max-h-[65vh] overflow-y-auto w-full table-wrapper">
+           <table id="kpi-modal-table" class="w-full text-left min-w-[700px]">
+             <thead class="bg-panel shadow-[0_1px_0_var(--border)]"></thead>
+             <tbody></tbody>
+           </table>
         </div>
       </div>
     </div>
@@ -304,10 +356,10 @@ Screens.today = {
     const modalEl = document.getElementById('kpi-modal');
     if (modalEl) {
       document.body.appendChild(modalEl);
-      modalEl.addEventListener('click', function(e) {
-        if (e.target === this) closeKpiModal();
-      });
+      modalEl.addEventListener('click', function(e) { if (e.target === this) closeKpiModal(); });
     }
+
+    await loadTodayChannelInfo();
 
     const [kpis, hourly, createdToday, open, unassigned, comparison, attention, assignees, solvers, settings, awaitingAgent, statusBreakdown, firstResponseToday] = await Promise.all([
       fetch('/monitor/api/today/kpis').then(r => r.ok ? r.json() : {}).catch(() => ({})),
@@ -334,33 +386,17 @@ Screens.today = {
 
     const renderKpiGridSquare = (label, total, color, onClick) => {
       const div = document.createElement('div');
-      div.className = 'kpi-clickable card';
-      
-      div.style.width = '76px';
-      div.style.height = '76px';
-      div.style.flexShrink = '0';
-      
-      div.style.display = 'flex';
-      div.style.flexDirection = 'column';
-      div.style.justifyContent = 'center';
-      div.style.alignItems = 'center';
-      div.style.padding = '8px';
-      div.style.margin = '0';
-      div.style.gap = '6px';
-      div.style.textAlign = 'center';
-      div.style.cursor = 'pointer';
-      
+      div.className = 'w-[76px] h-[76px] flex flex-col justify-center items-center p-2 gap-1.5 text-center cursor-pointer shrink-0 bg-panel border border-border rounded-xl hover:-translate-y-0.5 hover:shadow-md transition-all group';
       div.innerHTML = `
-        <div style="display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%;">
-          <span style="width: 6px; height: 6px; border-radius: 50%; background-color: ${color}; flex-shrink: 0; box-shadow: 0 0 4px ${color}80;"></span>
-          <span style="font-weight: 600; font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); text-transform: uppercase;" title="${label}">${label}</span>
+        <div class="flex items-center justify-center gap-1 w-full">
+          <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: ${color}; box-shadow: 0 0 4px ${color}80;"></span>
+          <span class="font-semibold text-[0.65rem] whitespace-nowrap overflow-hidden text-ellipsis text-muted uppercase" title="${label}">${label}</span>
         </div>
-        <span style="font-size: 1.4rem; font-weight: 700; line-height: 1; color: var(--text);">${total}</span>`;
+        <span class="text-[1.4rem] font-bold leading-none text-text group-hover:text-[${color}] transition-colors">${total}</span>`;
       div.onclick = onClick;
       return div;
     };
 
-    // Usando nomes cheios para o Grid Quadrado
     const prioMapFull = { 'urgent': 'Urgente', 'high': 'Alta', 'medium': 'Média', 'low': 'Baixa', 'none': 'Nenhuma' };
     const prioColors = { 'urgent': '#ff5c5c', 'high': '#ff5c5c', 'medium': '#ffc247', 'low': '#34d399', 'none': '#9296b8' };
     const PRIORITY_ORDER = ['urgent', 'high', 'medium', 'low', 'none'];
@@ -374,11 +410,11 @@ Screens.today = {
         priorityContainer.appendChild(el);
       }
     });
-    if (priorityContainer.innerHTML === '') priorityContainer.innerHTML = '<div class="empty-state" style="width: 100%; padding: 10px;"><i class="bi bi-inbox" style="font-size: 1.5rem;"></i><span>Nenhum chamado aberto</span></div>';
+    if (priorityContainer.innerHTML === '') priorityContainer.innerHTML = '<div class="w-full p-3 text-center text-muted"><i class="bi bi-inbox text-lg block mb-1"></i><span class="text-xs">Nenhum chamado aberto</span></div>';
 
     const labelContainer = document.getElementById('label-list');
     if (!statusBreakdown.labels || statusBreakdown.labels.length === 0) {
-      labelContainer.innerHTML = '<div class="empty-state" style="width: 100%; padding: 10px;"><i class="bi bi-tag" style="font-size: 1.5rem;"></i><span>Nenhuma etiqueta em uso</span></div>';
+      labelContainer.innerHTML = '<div class="w-full p-3 text-center text-muted"><i class="bi bi-tag text-lg block mb-1"></i><span class="text-xs">Nenhuma etiqueta em uso</span></div>';
     } else {
       statusBreakdown.labels.forEach(l => {
         const color = getLabelColor(l.label);
@@ -392,18 +428,15 @@ Screens.today = {
     if (kpis.total) {
       const currentSla = ((1 - kpis.resolution_breach_rate) * 100).toFixed(0);
       const targetSla = settings.sla_target_percent || 95;
-      
       cardSlaMet.textContent = `${currentSla}% / ${targetSla}%`;
-      cardSlaMet.style.color = Number(currentSla) >= Number(targetSla) ? '#34d399' : '#f87171';
+      cardSlaMet.className = `block text-[1.5rem] font-bold leading-none ${Number(currentSla) >= Number(targetSla) ? 'text-accent-green' : 'text-accent-red'}`;
     } else {
       cardSlaMet.textContent = '-';
-      cardSlaMet.style.color = '';
     }
 
-    const renderCompareBars = (elId, current, previous, themeColor) => {
+    const renderCompareBars = (elId, current, previous, themeColorClass, themeColorHex) => {
       const badgeEl = document.getElementById(`${elId}-badge`);
       const barsEl = document.getElementById(`${elId}-bars`);
-      
       if (!badgeEl || !barsEl) return;
       
       const diff = current - previous;
@@ -412,69 +445,65 @@ Screens.today = {
       const currPct = (current / maxVal) * 100;
       
       if (diff === 0) {
-        badgeEl.innerHTML = `<span class="badge badge-neutral" style="font-size: 0.65rem; text-transform: uppercase;">= Igual</span>`;
+        badgeEl.innerHTML = `<span class="inline-flex items-center px-1.5 py-0.5 text-[0.65rem] font-semibold rounded-md uppercase bg-panel-light text-muted border border-border">= Igual</span>`;
       } else {
         const isGood = diff < 0; 
-        const colorClass = isGood ? 'badge-green' : 'badge-red';
+        const colorClass = isGood ? 'text-accent-green bg-accent-green/10 border border-accent-green/20' : 'text-accent-red bg-accent-red/10 border border-accent-red/20';
         const icon = isGood ? 'bi-graph-down-arrow' : 'bi-graph-up-arrow';
-        badgeEl.innerHTML = `<span class="badge ${colorClass}" style="font-size: 0.65rem;"><i class="bi ${icon}"></i> ${Math.abs(diff)} vs Sem. Pass.</span>`;
+        badgeEl.innerHTML = `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[0.65rem] font-semibold rounded-md ${colorClass}"><i class="bi ${icon}"></i> ${Math.abs(diff)} vs Sem. Pass.</span>`;
       }
       
+      // Changed bg-bg to bg-panel-light to avoid white lines in dark theme
       barsEl.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 8px;">
-           <span style="font-size: 0.65rem; color: var(--muted); width: 30px; text-align: right;">${previous}</span>
-           <div style="flex: 1; height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; border: 1px solid var(--border);">
-              <div style="width: ${prevPct}%; height: 100%; background: var(--muted); opacity: 0.5;"></div>
+        <div class="flex items-center gap-2">
+           <span class="text-[0.65rem] text-muted w-[30px] text-right">${previous}</span>
+           <div class="flex-1 h-1.5 bg-panel-light rounded-full overflow-hidden border border-border/50">
+              <div style="width: ${prevPct}%;" class="h-full bg-muted/50"></div>
            </div>
          </div>
-         <div style="display: flex; align-items: center; gap: 8px;">
-           <span style="font-size: 0.65rem; color: var(--text); font-weight: bold; width: 30px; text-align: right;">${current}</span>
-           <div style="flex: 1; height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; border: 1px solid var(--border);">
-              <div style="width: ${currPct}%; height: 100%; background: ${themeColor}; box-shadow: 0 0 5px ${themeColor}80;"></div>
+         <div class="flex items-center gap-2">
+           <span class="text-[0.65rem] text-text font-bold w-[30px] text-right">${current}</span>
+           <div class="flex-1 h-1.5 bg-panel-light rounded-full overflow-hidden border border-border/50">
+              <div style="width: ${currPct}%; box-shadow: 0 0 5px ${themeColorHex}80;" class="h-full ${themeColorClass}"></div>
            </div>
          </div>
       `;
     };
 
-    renderCompareBars('kpi-open', open.length || 0, comparison.open_last_week ?? 0, 'var(--accent-yellow)');
-    renderCompareBars('kpi-unassigned', unassigned.length || 0, comparison.unassigned_last_week ?? 0, 'var(--accent-red)');
+    renderCompareBars('kpi-open', open.length || 0, comparison.open_last_week ?? 0, 'bg-accent-yellow', '#ffc247');
+    renderCompareBars('kpi-unassigned', unassigned.length || 0, comparison.unassigned_last_week ?? 0, 'bg-accent-red', '#ff5c5c');
 
-    document.querySelectorAll('.kpi-clickable[data-kpi]').forEach(el => {
-      el.onclick = () => openKpiModal(el.dataset.kpi);
-    });
-
+    const channelKeys = Object.keys(TODAY_CHANNEL_INFO);
     const fullDayData = Array.from({length: 24}, (_, i) => {
       const hrStr = i.toString().padStart(2, '0') + ':00';
       const found = hourly.find(r => new Date(r.hour).getHours() === i);
-      return {
-        hour: hrStr,
-        created_whatsapp: found ? found.created_whatsapp : 0,
-        created_email: found ? found.created_email : 0,
-        created_other: found ? found.created_other : 0,
-        resolved: found ? found.resolved : 0,
-      };
+      const row = { hour: hrStr, resolved: found ? found.resolved : 0 };
+      channelKeys.forEach(k => row[k] = found ? (found[`created_${k}`] || 0) : 0);
+      return row;
     });
+
+    const createdDatasets = channelKeys.map(k => ({
+      label: TODAY_CHANNEL_INFO[k].label,
+      data: fullDayData.map(r => r[k]),
+      backgroundColor: TODAY_CHANNEL_INFO[k].color,
+      stack: 'created',
+      borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
+      barPercentage: 0.7,
+      categoryPercentage: 0.8,
+    }));
 
     renderChart('chart-hourly', {
       type: 'bar',
       data: {
         labels: fullDayData.map(r => r.hour),
         datasets: [
-          { label: 'WhatsApp', data: fullDayData.map(r => r.created_whatsapp), backgroundColor: '#34d399', stack: 'created', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
-          { label: 'E-mail', data: fullDayData.map(r => r.created_email), backgroundColor: '#29a3ff', stack: 'created', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
-          { label: 'Outros', data: fullDayData.map(r => r.created_other), backgroundColor: '#9296b8', stack: 'created', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
+          ...createdDatasets,
           { label: 'Resolvidas', data: fullDayData.map(r => r.resolved), backgroundColor: '#ffc247', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
         ],
       },
       options: {
         maintainAspectRatio: false,
-        plugins: { 
-          legend: { 
-            position: 'top', 
-            align: 'end',
-            labels: { boxWidth: 10, usePointStyle: true, padding: 16, font: { size: 11 } } 
-          } 
-        },
+        plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10, usePointStyle: true, padding: 16, font: { size: 11 } } } },
         scales: {
           x: { grid: { display: false, drawBorder: false }, ticks: { maxTicksLimit: 12, font: { size: 10 } } },
           y: { grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false }, ticks: { stepSize: 1, font: { size: 10 } } }
@@ -484,40 +513,42 @@ Screens.today = {
 
     const attentionTbody = document.querySelector('#attention-table tbody');
     if (attention.length === 0) {
-      attentionTbody.innerHTML = `<tr><td colspan="8"><div class="empty-state" style="padding: 40px 20px;"><i class="bi bi-emoji-smile" style="color: var(--accent-green); font-size: 2.5rem; margin-bottom: 12px;"></i><span style="font-size: 1.1rem; color: var(--text);">Tudo tranquilo!</span><span style="font-size: 0.9rem;">Nenhum chamado precisando de atenção.</span></div></td></tr>`;
+      attentionTbody.innerHTML = `<tr><td colspan="6"><div class="py-10 text-center flex flex-col items-center"><i class="bi bi-emoji-smile text-3xl text-accent-green mb-2 block"></i><span class="text-sm text-text font-medium">Tudo tranquilo!</span></div></td></tr>`;
     } else {
       const chatwootBase = settings.chatwoot_base_url || '';
       const accountId = currentUser.account_id;
-
       attentionTbody.innerHTML = attention.map(r => {
         const url = `${chatwootBase}/app/accounts/${accountId}/search?q=${r.conversation_id}`;
-        
-        return `<tr>
-          <td style="font-weight: 600; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.conversation_id}</td>
-          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem;" title="${r.contact_name ?? '-'}">${r.contact_name ?? '-'}</td>
-          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem;" title="${r.subject ?? '-'}">${r.subject ?? '-'}</td>
-          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem;" title="${r.assignee_name ?? '-'}">${r.assignee_name ?? '-'}</td>
-          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${todayPriorityBadge(r.priority)}</td>
-          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${todayChannelBadge(r.channel)}</td>
-          <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${todaySlaBadge(r.minutes_remaining)}</td>
-          <td style="text-align: right; padding: 4px;">
-            <button class="topbar-btn" style="padding: 4px 6px; display: inline-flex;" data-tooltip="Visualizar" onclick="window.open('${url}', '_blank')">
-              <i class="bi bi-box-arrow-up-right" style="font-size: 0.8rem;"></i>
+        return `<tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors">
+          <td class="px-4 py-3 font-semibold text-[0.75rem] text-text">${r.conversation_id}</td>
+          <td class="px-4 py-3 text-[0.75rem] max-w-[200px] truncate text-text">
+             <span class="block font-medium truncate" title="${r.contact_name ?? '-'}">${r.contact_name ?? '-'}</span>
+             <span class="block text-[0.65rem] text-muted truncate" title="${r.subject ?? '-'}">${r.subject ?? '-'}</span>
+          </td>
+          <td class="px-4 py-3 text-[0.75rem] truncate text-text" title="${r.assignee_name ?? '-'}">${r.assignee_name ?? '-'}</td>
+          <td class="px-4 py-3">
+            <div class="flex flex-col items-start gap-1">
+              ${todayPriorityBadge(r.priority)}
+              ${todayChannelBadge(r.channel)}
+            </div>
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap">${todaySlaBadge(r.minutes_remaining)}</td>
+          <td class="px-4 py-3 text-right">
+            <button class="p-1.5 text-muted hover:text-text hover:bg-white/5 rounded-md transition-colors" data-tooltip="Abrir no Atrium Chat" onclick="window.open('${url}', '_blank')">
+              <i class="bi bi-box-arrow-up-right text-[0.8rem]"></i>
             </button>
           </td>
         </tr>`;
       }).join('');
     }
 
-    const assigneesHtml = assignees.length > 0 
-      ? assignees.sort((a,b) => b.total - a.total).map(a => rankTableRow(a.assignee_name, a.total, 'var(--accent-blue)')).join('')
-      : '<tr><td colspan="2"><div class="empty-state" style="padding: 16px;"><i class="bi bi-inbox" style="font-size: 1.2rem; margin-bottom: 4px;"></i><span>Sem dados</span></div></td></tr>';
-    document.querySelector('#table-today-assignees tbody').innerHTML = assigneesHtml;
+    document.querySelector('#table-today-assignees tbody').innerHTML = assignees.length > 0 
+      ? assignees.sort((a,b) => b.total - a.total).map(a => rankTableRow(a.assignee_name, a.total, 'text-blue-400')).join('')
+      : '<tr><td colspan="2"><div class="p-4 text-center"><i class="bi bi-inbox text-xl text-border mb-1 block"></i><span class="text-xs text-muted">Sem dados</span></div></td></tr>';
 
-    const solversHtml = solvers.length > 0
-      ? solvers.sort((a,b) => b.resolved_count - a.resolved_count).map(s => rankTableRow(s.assignee_name, s.resolved_count, 'var(--accent-green)')).join('')
-      : '<tr><td colspan="2"><div class="empty-state" style="padding: 16px;"><i class="bi bi-inbox" style="font-size: 1.2rem; margin-bottom: 4px;"></i><span>Sem dados</span></div></td></tr>';
-    document.querySelector('#table-today-solvers tbody').innerHTML = solversHtml;
+    document.querySelector('#table-today-solvers tbody').innerHTML = solvers.length > 0
+      ? solvers.sort((a,b) => b.resolved_count - a.resolved_count).map(s => rankTableRow(s.assignee_name, s.resolved_count, 'text-accent-green')).join('')
+      : '<tr><td colspan="2"><div class="p-4 text-center"><i class="bi bi-inbox text-xl text-border mb-1 block"></i><span class="text-xs text-muted">Sem dados</span></div></td></tr>';
 
   },
 };

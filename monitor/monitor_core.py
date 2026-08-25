@@ -107,6 +107,25 @@ CREATE TABLE IF NOT EXISTS monitor.bug_reports (
 );
 
 ALTER TABLE monitor.bug_reports ADD COLUMN IF NOT EXISTS account_id BIGINT;
+
+CREATE TABLE IF NOT EXISTS monitor.business_hours_config (
+    account_id BIGINT PRIMARY KEY,
+    enabled BOOLEAN NOT NULL DEFAULT false,
+    business_days INT[] NOT NULL DEFAULT '{1,2,3,4,5}',
+    hour_start TIME NOT NULL DEFAULT '08:00',
+    hour_end TIME NOT NULL DEFAULT '18:00'
+);
+
+CREATE TABLE IF NOT EXISTS monitor.channels (
+    account_id BIGINT NOT NULL,
+    channel_key TEXT NOT NULL,
+    channel_name TEXT NOT NULL,
+    inbox_ids INT[] NOT NULL DEFAULT '{}',
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    PRIMARY KEY (account_id, channel_key)
+);
+
+ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS sla_ignore_business_hours BOOLEAN DEFAULT false;
 """
 
 DEFAULT_LABEL_COLOR = "#9296b8"
@@ -147,24 +166,31 @@ def to_ts(value) -> datetime:
         return datetime.now(tz=timezone.utc)
 
 
-async def get_inbox_channel_map(conn, account_id: int):
+async def get_channels(conn, account_id: int) -> list:
     rows = await conn.fetch(
-        "SELECT key, value FROM monitor.settings WHERE account_id = $1 AND key IN ('whatsapp_inbox_ids', 'email_inbox_ids')",
+        "SELECT channel_key, channel_name, inbox_ids, is_default FROM monitor.channels WHERE account_id = $1 ORDER BY is_default DESC, channel_name",
         account_id,
     )
-    settings_map = {r["key"]: r["value"] for r in rows}
+    if not rows:
+        await conn.execute(
+            """
+            INSERT INTO monitor.channels (account_id, channel_key, channel_name, inbox_ids, is_default)
+            VALUES ($1,'whatsapp','WhatsApp','{}',true), ($1,'email','E-mail','{}',true)
+            ON CONFLICT DO NOTHING
+            """,
+            account_id,
+        )
+        rows = await conn.fetch(
+            "SELECT channel_key, channel_name, inbox_ids, is_default FROM monitor.channels WHERE account_id = $1 ORDER BY is_default DESC, channel_name",
+            account_id,
+        )
+    return [dict(r) for r in rows]
 
-    def parse_ids(raw):
-        return {int(x.strip()) for x in raw.split(",") if x.strip().isdigit()} if raw else set()
 
-    return parse_ids(settings_map.get("whatsapp_inbox_ids")), parse_ids(settings_map.get("email_inbox_ids"))
-
-
-def resolve_channel(inbox_id, whatsapp_ids, email_ids):
-    if inbox_id in whatsapp_ids:
-        return "whatsapp"
-    if inbox_id in email_ids:
-        return "email"
+def resolve_channel(inbox_id, channels: list) -> str:
+    for c in channels:
+        if inbox_id in c["inbox_ids"]:
+            return c["channel_key"]
     return "other"
 
 
@@ -208,6 +234,8 @@ async def handle_conversation_event(data: dict, pool):
     regime_tributario = contact_custom_attrs.get("regime_tributrio")
     status_contrato = contact_custom_attrs.get("status_do_contrato")
     labels = data.get("labels") or []
+    demanda_avulsa = custom_attrs.get("demanda_avulsa_cobrana_extra")
+    sla_ignore_business_hours = bool(custom_attrs.get("horas_extras"))
 
     async with pool.acquire() as conn:
         cancellation_label = await get_cancellation_label(conn, account_id)
@@ -244,25 +272,25 @@ async def handle_conversation_event(data: dict, pool):
                     conversation_id, inbox_id, account_id, str(snap["team_id"]), str(team_id), occurred_at,
                 )
 
-        await conn.execute(
+            await conn.execute(
                 """
                 INSERT INTO monitor.conversation_snapshot
                     (conversation_id, inbox_id, account_id, status, assignee_id, assignee_name, team_id,
                      company_name, contact_id, contact_name, priority, subject, labels, updated_at,
                      cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
-                     excluded_from_metrics)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+                     excluded_from_metrics, sla_ignore_business_hours)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
                 ON CONFLICT (conversation_id) DO UPDATE SET
                     inbox_id = $2, account_id = $3, status = $4, assignee_id = $5, assignee_name = $6, team_id = $7,
                     company_name = $8, contact_id = $9, contact_name = $10, priority = $11,
                     subject = $12, labels = $13, updated_at = $14,
                     cd_cliente = $15, razao_social = $16, regime_tributario = $17, status_contrato = $18,
-                    demanda_avulsa = $19, excluded_from_metrics = $20
+                    demanda_avulsa = $19, excluded_from_metrics = $20, sla_ignore_business_hours = $21
                 """,
                 conversation_id, inbox_id, account_id, status, assignee_id, assignee_name, team_id,
                 company_name, contact_id, contact_name, priority, subject, labels, occurred_at,
                 cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
-                excluded_from_metrics,
+                excluded_from_metrics, sla_ignore_business_hours,
            )
 
 

@@ -1,70 +1,73 @@
 const SLA_DAYS_OPTIONS = [7, 14, 30, 90, 180];
 
-const SLA_CHANNEL_MAP = { 
-  whatsapp: { label: 'WhatsApp', badge: 'badge-green', icon: 'bi-whatsapp' }, 
-  email: { label: 'E-mail', badge: 'badge-blue', icon: 'bi-envelope' }, 
-  other: { label: 'Outros', badge: 'badge-neutral', icon: 'bi-chat-dots' } 
-};
+let SLA_CHANNEL_INFO = {};
+
+async function loadChannelInfo() {
+  const channels = await (await fetch('/monitor/api/channels')).json();
+  SLA_CHANNEL_INFO = {};
+  channels.forEach(c => {
+    if (c.channel_key === 'whatsapp') {
+      SLA_CHANNEL_INFO[c.channel_key] = { label: c.channel_name, classes: 'text-accent-green bg-accent-green/10 border-accent-green/20', icon: 'bi-whatsapp' };
+    } else if (c.channel_key === 'email') {
+      SLA_CHANNEL_INFO[c.channel_key] = { label: c.channel_name, classes: 'text-blue-400 bg-blue-400/10 border-blue-400/20', icon: 'bi-envelope' };
+    } else {
+      SLA_CHANNEL_INFO[c.channel_key] = { label: c.channel_name, classes: 'text-muted bg-border/30 border-border', icon: 'bi-chat-dots' };
+    }
+  });
+  SLA_CHANNEL_INFO.other = { label: 'Outros', classes: 'text-muted bg-border/30 border-border', icon: 'bi-chat-dots' };
+}
 
 const SLA_PRIORITY_MAP = { 
-  urgent: { label: 'Urgente', badge: 'badge-red', icon: 'bi-exclamation-triangle-fill', order: 1 }, 
-  high: { label: 'Alta', badge: 'badge-red', icon: 'bi-arrow-up-circle-fill', order: 2 }, 
-  medium: { label: 'Média', badge: 'badge-yellow', icon: 'bi-dash-circle-fill', order: 3 }, 
-  low: { label: 'Baixa', badge: 'badge-neutral', icon: 'bi-arrow-down-circle-fill', order: 4 }, 
-  none: { label: 'Nenhuma', badge: 'badge-neutral', icon: 'bi-info-circle-fill', order: 5 } 
+  urgent: { label: 'Urgente', classes: 'text-accent-red bg-accent-red/10 border-accent-red/20', icon: 'bi-exclamation-triangle-fill', order: 1 }, 
+  high: { label: 'Alta', classes: 'text-accent-red bg-accent-red/10 border-accent-red/20', icon: 'bi-arrow-up-circle-fill', order: 2 }, 
+  medium: { label: 'Média', classes: 'text-accent-yellow bg-accent-yellow/10 border-accent-yellow/20', icon: 'bi-dash-circle-fill', order: 3 }, 
+  low: { label: 'Baixa', classes: 'text-muted bg-border/30 border-border', icon: 'bi-arrow-down-circle-fill', order: 4 }, 
+  none: { label: 'Nenhuma', classes: 'text-muted bg-border/30 border-border', icon: 'bi-info-circle-fill', order: 5 } 
 };
 
-// Formatação inteligente para exibir Dias e Horas
 function formatDetailedDuration(totalMinutes) {
   if (totalMinutes === null || totalMinutes === undefined) return '-';
   const minutes = Math.round(totalMinutes);
   if (minutes < 60) return `${minutes}m`;
-  
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  
-  if (hours < 24) {
-    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
-  }
-  
+  if (hours < 24) return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
   const days = Math.floor(hours / 24);
   const remainingHours = hours % 24;
-  
   if (remainingHours === 0) return `${days}d`;
   return `${days}d ${remainingHours}h`;
 }
 
-// Layout mais limpo e condensado para as barras de progresso
 function buildSlaRow(labelHtml, data, targetSla) {
   if (data.resolution_breach_rate == null) {
-    return `<tr><td colspan="3"><div class="empty-state" style="padding: 16px;"><i class="bi bi-inbox" style="font-size: 1.5rem;"></i><span>Sem dados</span></div></td></tr>`;
+    return `<tr><td colspan="3"><div class="p-3 text-center text-muted"><i class="bi bi-inbox text-lg block mb-1"></i><span class="text-xs">Sem dados</span></div></td></tr>`;
   }
 
   const attained = (1 - data.resolution_breach_rate) * 100;
   const isBreached = attained < targetSla;
-  const barColor = isBreached ? 'var(--accent-red)' : 'var(--accent-green)';
+  const barColorClass = isBreached ? 'bg-accent-red' : 'bg-accent-green';
+  const textClass = isBreached ? 'text-accent-red' : 'text-accent-green';
+  const hexColor = isBreached ? '#ff5c5c' : '#34d399';
   
   return `
-    <tr>
-      <td style="width: 35%; vertical-align: middle;">
-        <div style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;">
-          ${labelHtml}
-        </div>
-        <div class="muted-text" style="font-size: 0.75rem; margin-top: 6px; font-weight: 600;">VOL: ${data.total || 0}</div>
+    <tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors">
+      <td class="px-3 py-2 align-middle">
+        <div class="font-medium whitespace-nowrap overflow-hidden text-ellipsis text-[0.8rem] max-w-[160px]">${labelHtml}</div>
+        <div class="text-[0.65rem] text-muted font-bold tracking-wider mt-0.5 uppercase">VOL: ${data.total || 0}</div>
       </td>
-      <td style="width: 25%; vertical-align: middle;">
-        <div style="display: flex; flex-direction: column; gap: 6px;">
-          <span style="font-size: 0.8rem; display: flex; align-items: center; gap: 6px;"><i class="bi bi-stopwatch muted-text" style="font-size: 0.9rem;"></i> <span style="font-weight: 500;">${formatDetailedDuration(data.avg_first_response)}</span></span>
-          <span style="font-size: 0.8rem; display: flex; align-items: center; gap: 6px;"><i class="bi bi-check2-all muted-text" style="font-size: 0.9rem;"></i> <span style="font-weight: 500;">${formatDetailedDuration(data.avg_resolution)}</span></span>
+      <td class="px-3 py-2 align-middle w-[120px]">
+        <div class="flex flex-col gap-1">
+          <span class="text-[0.7rem] text-text font-medium flex items-center gap-1.5"><i class="bi bi-stopwatch text-muted text-[0.75rem]"></i> ${formatDetailedDuration(data.avg_first_response)}</span>
+          <span class="text-[0.7rem] text-text font-medium flex items-center gap-1.5"><i class="bi bi-check2-all text-muted text-[0.75rem]"></i> ${formatDetailedDuration(data.avg_resolution)}</span>
         </div>
       </td>
-      <td style="width: 40%; vertical-align: middle; padding-right: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.75rem;">
-          <span style="font-weight: 600; color: var(--muted);">Meta: ${targetSla}%</span>
-          <span style="color: ${barColor}; font-weight: 700; font-size: 0.85rem;">${attained.toFixed(1)}%</span>
+      <td class="px-3 py-2 align-middle w-full pl-4">
+        <div class="flex justify-between items-center mb-1 text-[0.65rem]">
+          <span class="font-semibold text-muted">Meta: ${targetSla}%</span>
+          <span class="font-bold ${textClass}">${attained.toFixed(1)}%</span>
         </div>
-        <div style="width: 100%; background: var(--bg); border-radius: 3px; height: 6px; overflow: hidden; border: 1px solid var(--border);">
-          <div style="width: ${attained}%; background: ${barColor}; height: 100%; border-radius: 3px; transition: width 1s ease-in-out; box-shadow: 0 0 4px ${barColor}80;"></div>
+        <div class="w-full bg-panel-light rounded-full h-1.5 overflow-hidden border border-border/50">
+          <div style="width: ${attained}%; box-shadow: 0 0 5px ${hexColor}80;" class="h-full rounded-full transition-all duration-1000 ${barColorClass}"></div>
         </div>
       </td>
     </tr>
@@ -91,18 +94,17 @@ async function renderSlaData(days) {
 
   if (attained !== null) {
     slaEl.textContent = `${attained}% / ${target}%`;
-    slaEl.style.color = Number(attained) >= Number(target) ? 'var(--accent-green)' : 'var(--accent-red)';
+    slaEl.className = `text-[1.5rem] font-bold leading-none ${Number(attained) >= Number(target) ? 'text-accent-green glow-text' : 'text-accent-red glow-text'}`;
   } else {
     slaEl.textContent = '-';
-    slaEl.style.color = '';
+    slaEl.className = 'text-[1.5rem] font-bold leading-none text-text';
   }
 
   const totalInSla = summary.total && attained !== null ? Math.round(summary.total * (attained / 100)) : 0;
   document.getElementById('sla-total').textContent = `${totalInSla} / ${summary.total || 0}`;
 
-  const emptyRow = '<tr><td colspan="3"><div class="empty-state" style="padding: 24px;"><i class="bi bi-inbox" style="font-size: 1.8rem; margin-bottom: 8px;"></i><span>Sem dados no período</span></div></td></tr>';
+  const emptyRow = '<tr><td colspan="3"><div class="p-6 text-center text-muted"><i class="bi bi-inbox text-2xl block mb-2"></i><span class="text-sm">Sem dados no período</span></div></td></tr>';
 
-  // Prioridade
   const sortedPriority = [...byPriority].sort((a, b) => {
     const oa = (SLA_PRIORITY_MAP[String(a.priority).toLowerCase()] || SLA_PRIORITY_MAP.none).order;
     const ob = (SLA_PRIORITY_MAP[String(b.priority).toLowerCase()] || SLA_PRIORITY_MAP.none).order;
@@ -110,215 +112,235 @@ async function renderSlaData(days) {
   });
   document.getElementById('tb-sla-priority').innerHTML = sortedPriority.length ? sortedPriority.map(p => {
     const info = SLA_PRIORITY_MAP[String(p.priority).toLowerCase()] || SLA_PRIORITY_MAP.none;
-    const label = `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 8px;"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
+    const label = `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[0.65rem] font-semibold rounded-md border whitespace-nowrap ${info.classes}"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
     return buildSlaRow(label, p, target);
   }).join('') : emptyRow;
 
-  // Canal
   document.getElementById('tb-sla-channel').innerHTML = byChannel.length ? byChannel.sort((a, b) => b.total - a.total).map(c => {
-    const info = SLA_CHANNEL_MAP[String(c.channel).toLowerCase()] || SLA_CHANNEL_MAP.other;
-    const label = `<span class="badge ${info.badge}" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 8px;"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
+    const info = SLA_CHANNEL_INFO[String(c.channel).toLowerCase()] || SLA_CHANNEL_INFO.other;
+    const label = `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[0.65rem] font-semibold rounded-md border whitespace-nowrap ${info.classes}"><i class="bi ${info.icon}"></i> ${info.label}</span>`;
     return buildSlaRow(label, c, target);
   }).join('') : emptyRow;
 
-  // Assunto
   document.getElementById('tb-sla-subject').innerHTML = bySubject.length ? bySubject.sort((a, b) => b.total - a.total).map(s => 
-    buildSlaRow(`<span style="color: var(--text);">${s.subject || 'Não categorizado'}</span>`, s, target)
+    buildSlaRow(`<span class="text-text">${s.subject || 'Não categorizado'}</span>`, s, target)
   ).join('') : emptyRow;
 
-  // Time
   document.getElementById('tb-sla-team').innerHTML = byTeam.length ? byTeam.sort((a, b) => b.total - a.total).map(t => 
-    buildSlaRow(`<span style="color: var(--text);"><i class="bi bi-people" style="margin-right: 6px; color: var(--muted);"></i>${t.team_name}</span>`, t, target)
+    buildSlaRow(`<span class="text-text flex items-center"><i class="bi bi-people mr-1.5 text-muted"></i>${t.team_name}</span>`, t, target)
   ).join('') : emptyRow;
 
-  // Clientes (Piores)
   document.getElementById('tb-sla-client-worst').innerHTML = (byClient.worst || []).length ? byClient.worst.map(c => 
-    buildSlaRow(`<span style="color: var(--text);"><i class="bi bi-building" style="margin-right: 6px; color: var(--muted);"></i>${c.client_name}</span>`, c, target)
+    buildSlaRow(`<span class="text-text flex items-center"><i class="bi bi-building mr-1.5 text-muted"></i>${c.client_name}</span>`, c, target)
   ).join('') : emptyRow;
 
-  // Clientes (Melhores)
   document.getElementById('tb-sla-client-best').innerHTML = (byClient.best || []).length ? byClient.best.map(c => 
-    buildSlaRow(`<span style="color: var(--text);"><i class="bi bi-building" style="margin-right: 6px; color: var(--muted);"></i>${c.client_name}</span>`, c, target)
+    buildSlaRow(`<span class="text-text flex items-center"><i class="bi bi-building mr-1.5 text-muted"></i>${c.client_name}</span>`, c, target)
   ).join('') : emptyRow;
 }
 
 Screens.sla = {
   template: `
-    <div style="display:flex; align-items:center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
-      <div class="home-avatar" style="width: 56px; height: 56px; font-size: 1.4rem; margin-bottom: 0; background: var(--accent-yellow);">
-        <i class="bi bi-shield-check"></i>
-      </div>
-      <div>
-        <h2 style="margin: 0 0 4px; font-size: 1.4rem;">Visão SLA</h2>
-        <p class="muted-text" style="margin: 0; font-size: 0.9rem;">Análise de conformidade e tempos de resposta</p>
-      </div>
-    </div>
+    <div class="flex flex-col gap-6 w-full max-w-[1400px] mx-auto no-scrollbar">
 
-    <div class="filter-bar" style="margin-bottom: 24px;">
-      ${SLA_DAYS_OPTIONS.map(d => `<button class="filter-btn${d === 30 ? ' active' : ''}" data-days="${d}">${d}D</button>`).join('')}
-    </div>
+      <!-- Header & Date Filters -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border">
+        <div class="flex items-center gap-4">
+          <div class="w-14 h-14 rounded-xl flex items-center justify-center text-2xl shrink-0 bg-accent-yellow text-white shadow-sm glow-border"><i class="bi bi-shield-check"></i></div>
+          <div>
+            <h2 class="m-0 mb-1 text-[1.4rem] font-bold text-text">Visão SLA</h2>
+            <p class="m-0 text-[0.9rem] text-muted">Análise de conformidade e tempos de resposta</p>
+          </div>
+        </div>
 
-    <div class="cards" style="margin-bottom: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-      <div class="card" style="padding: 20px;">
-        <i class="bi bi-stopwatch card-icon" style="color: var(--accent-blue);"></i>
-        <span class="card-label">1ª Resposta (Média)</span>
-        <span class="card-value" id="sla-frt">-</span>
-      </div>
-      <div class="card" style="padding: 20px;">
-        <i class="bi bi-check2-all card-icon" style="color: var(--accent-green);"></i>
-        <span class="card-label">Resolução (Média)</span>
-        <span class="card-value" id="sla-res">-</span>
-      </div>
-      <div class="card" style="padding: 20px; border-color: rgba(255,194,71,0.3); background: linear-gradient(135deg, rgba(255,194,71,0.05), var(--panel) 60%);">
-        <i class="bi bi-shield-check card-icon" style="color: var(--accent-yellow);"></i>
-        <span class="card-label">% SLA Atingido vs Meta</span>
-        <span class="card-value" id="sla-attained" style="white-space: nowrap;">-</span>
-      </div>
-      <div class="card" style="padding: 20px;">
-        <i class="bi bi-envelope-check card-icon" style="color: var(--muted);"></i>
-        <span class="card-label">Conversas no SLA / Total</span>
-        <span class="card-value" id="sla-total">-</span>
-      </div>
-    </div>
-
-    <div class="grid-2-cols" style="margin-bottom: 24px;">
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-flag"></i> SLA por Prioridade</h3>
-        </div>
-        <div class="table-responsive" style="flex: 1; max-height: 400px;">
-          <table id="table-sla-priority">
-            <thead>
-              <tr>
-                <th>Prioridade / Vol.</th>
-                <th>Tempos Médios</th>
-                <th style="width: 100%;">Atingimento</th>
-              </tr>
-            </thead>
-            <tbody id="tb-sla-priority"></tbody>
-          </table>
-        </div>
-      </div>
-      
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-chat-square-dots"></i> SLA por Canal</h3>
-        </div>
-        <div class="table-responsive" style="flex: 1; max-height: 400px;">
-          <table id="table-sla-channel">
-            <thead>
-              <tr>
-                <th>Canal / Vol.</th>
-                <th>Tempos Médios</th>
-                <th style="width: 100%;">Atingimento</th>
-              </tr>
-            </thead>
-            <tbody id="tb-sla-channel"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid-2-cols" style="margin-bottom: 24px;">
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-folder-fill"></i> SLA por Assunto</h3>
-        </div>
-        <div class="table-responsive" style="flex: 1; max-height: 400px;">
-          <table id="table-sla-subject">
-            <thead>
-              <tr>
-                <th>Assunto / Vol.</th>
-                <th>Tempos Médios</th>
-                <th style="width: 100%;">Atingimento</th>
-              </tr>
-            </thead>
-            <tbody id="tb-sla-subject"></tbody>
-          </table>
+        <div id="sla-date-filters" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
+          ${SLA_DAYS_OPTIONS.map(d => `<button id="btn-sla-${d}" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="${d}">${d}D</button>`).join('')}
         </div>
       </div>
 
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-diagram-3"></i> SLA por Departamento</h3>
+      <!-- Quick KPI Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="panel-card bg-panel border border-border rounded-xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:border-accent-blue/50 transition-colors group relative overflow-hidden">
+          <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:scale-110 transition-transform duration-300"><i class="bi bi-stopwatch text-[4rem] text-accent-blue"></i></div>
+          <i class="bi bi-stopwatch text-2xl text-accent-blue mb-2 relative z-10"></i>
+          <span class="text-[0.65rem] text-muted font-bold uppercase tracking-wider mb-1 relative z-10">1ª Resposta (Média)</span>
+          <span class="text-[1.5rem] font-bold text-text leading-none relative z-10" id="sla-frt">-</span>
         </div>
-        <div class="table-responsive" style="flex: 1; max-height: 400px;">
-          <table id="table-sla-team">
-            <thead>
-              <tr>
-                <th>Departamento / Vol.</th>
-                <th>Tempos Médios</th>
-                <th style="width: 100%;">Atingimento</th>
-              </tr>
-            </thead>
-            <tbody id="tb-sla-team"></tbody>
-          </table>
+        <div class="panel-card bg-panel border border-border rounded-xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:border-accent-green/50 transition-colors group relative overflow-hidden">
+          <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:scale-110 transition-transform duration-300"><i class="bi bi-check2-all text-[4rem] text-accent-green"></i></div>
+          <i class="bi bi-check2-all text-2xl text-accent-green mb-2 relative z-10"></i>
+          <span class="text-[0.65rem] text-muted font-bold uppercase tracking-wider mb-1 relative z-10">Resolução (Média)</span>
+          <span class="text-[1.5rem] font-bold text-text leading-none relative z-10" id="sla-res">-</span>
         </div>
-      </div>
-    </div>
-
-    <div class="grid-2-cols" style="margin-bottom: 24px;">
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-shield-exclamation"></i> Clientes (SLA Perdidos)</h3>
+        <div class="panel-card bg-panel border border-border rounded-xl p-5 flex flex-col items-center justify-center text-center shadow-sm border-accent-yellow/30 bg-gradient-to-br from-accent-yellow/5 to-panel group relative overflow-hidden">
+          <i class="bi bi-shield-check text-2xl text-accent-yellow mb-2 relative z-10 glow-text"></i>
+          <span class="text-[0.65rem] text-muted font-bold uppercase tracking-wider mb-1 relative z-10">SLA Atingido vs Meta</span>
+          <span class="text-[1.5rem] font-bold text-text leading-none whitespace-nowrap relative z-10" id="sla-attained">-</span>
         </div>
-        <div class="table-responsive" style="flex: 1; max-height: 400px;">
-          <table id="table-sla-client-worst">
-            <thead>
-              <tr>
-                <th>Cliente / Vol.</th>
-                <th>Tempos Médios</th>
-                <th style="width: 100%;">Atingimento</th>
-              </tr>
-            </thead>
-            <tbody id="tb-sla-client-worst"></tbody>
-          </table>
+        <div class="panel-card bg-panel border border-border rounded-xl p-5 flex flex-col items-center justify-center text-center shadow-sm group relative overflow-hidden">
+          <i class="bi bi-envelope-check text-2xl text-muted mb-2 relative z-10"></i>
+          <span class="text-[0.65rem] text-muted font-bold uppercase tracking-wider mb-1 relative z-10">SLA Atingido / Vol.</span>
+          <span class="text-[1.5rem] font-bold text-text leading-none relative z-10" id="sla-total">-</span>
         </div>
       </div>
 
-      <div class="panel" style="display: flex; flex-direction: column; min-width: 0;">
-        <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-          <h3 style="margin: 0;"><i class="bi bi-shield-check"></i> Clientes (Melhores SLAs)</h3>
+	<!-- Main Tables (Row 1) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-flag text-muted"></i> SLA por Prioridade</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto max-h-[280px] relative no-scrollbar">
+            <table class="w-full text-left table-fixed">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[35%] bg-panel">Prioridade / Vol.</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[120px] bg-panel">Tempos Médios</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-full pl-4 bg-panel">Atingimento</th>
+                </tr>
+              </thead>
+              <tbody id="tb-sla-priority"></tbody>
+            </table>
+          </div>
         </div>
-        <div class="table-responsive" style="flex: 1; max-height: 400px;">
-          <table id="table-sla-client-best">
-            <thead>
-              <tr>
-                <th>Cliente / Vol.</th>
-                <th>Tempos Médios</th>
-                <th style="width: 100%;">Atingimento</th>
-              </tr>
-            </thead>
-            <tbody id="tb-sla-client-best"></tbody>
-          </table>
+        
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-chat-square-dots text-muted"></i> SLA por Canal</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto max-h-[280px] relative no-scrollbar">
+            <table class="w-full text-left table-fixed">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[35%] bg-panel">Canal / Vol.</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[120px] bg-panel">Tempos Médios</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-full pl-4 bg-panel">Atingimento</th>
+                </tr>
+              </thead>
+              <tbody id="tb-sla-channel"></tbody>
+            </table>
+          </div>
         </div>
+
       </div>
+
+      <!-- Main Tables (Row 2) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-folder-fill text-muted"></i> SLA por Assunto</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto max-h-[280px] relative no-scrollbar">
+            <table class="w-full text-left table-fixed">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[35%] bg-panel">Assunto / Vol.</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[120px] bg-panel">Tempos Médios</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-full pl-4 bg-panel">Atingimento</th>
+                </tr>
+              </thead>
+              <tbody id="tb-sla-subject"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-diagram-3 text-muted"></i> SLA por Departamento</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto max-h-[280px] relative no-scrollbar">
+            <table class="w-full text-left table-fixed">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[35%] bg-panel">Depto / Vol.</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[120px] bg-panel">Tempos Médios</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-full pl-4 bg-panel">Atingimento</th>
+                </tr>
+              </thead>
+              <tbody id="tb-sla-team"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Tables (Worst/Best Clients) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        
+        <div class="panel-card bg-panel border border-border border-t-2 border-t-accent-red rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-shield-exclamation text-accent-red glow-text"></i> Clientes (SLA Perdidos)</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto max-h-[300px] relative no-scrollbar">
+            <table class="w-full text-left table-fixed">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[35%] bg-panel">Cliente / Vol.</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[120px] bg-panel">Tempos Médios</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-full pl-4 bg-panel">Atingimento</th>
+                </tr>
+              </thead>
+              <tbody id="tb-sla-client-worst"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel-card bg-panel border border-border border-t-2 border-t-accent-green rounded-xl shadow-sm flex flex-col min-w-0 overflow-hidden">
+          <div class="px-4 py-3 border-b border-border flex justify-between items-center cursor-pointer select-none shrink-0" onclick="togglePanel(this)">
+            <h3 class="m-0 text-[0.85rem] font-semibold text-text flex items-center gap-2"><i class="bi bi-shield-check text-accent-green glow-text"></i> Clientes (Melhores SLAs)</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex-1 overflow-y-auto max-h-[300px] relative no-scrollbar">
+            <table class="w-full text-left table-fixed">
+              <thead class="sticky top-0 bg-panel shadow-[0_1px_0_var(--border)] z-10">
+                <tr>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[35%] bg-panel">Cliente / Vol.</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-[120px] bg-panel">Tempos Médios</th>
+                  <th class="px-3 py-2 text-[0.65rem] font-bold text-muted uppercase tracking-wider w-full pl-4 bg-panel">Atingimento</th>
+                </tr>
+              </thead>
+              <tbody id="tb-sla-client-best"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
     </div>
   `,
   load: async function () {
     let selectedDays = Number(localStorage.getItem('monitor-sla-filter-days')) || 30;
 
-    document.querySelectorAll('#content .filter-btn').forEach(b => {
-      b.classList.toggle('active', Number(b.dataset.days) === selectedDays);
-    });
+    // Apply the active state correctly on load using global function
+    const initialBtnId = `btn-sla-${selectedDays}`;
+    if (document.getElementById(initialBtnId)) {
+        window.handleDateFilterClick('sla-date-filters', initialBtnId, 'monitor-sla-filter-days');
+    }
 
     document.querySelectorAll('#content .filter-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         selectedDays = Number(btn.dataset.days);
-        localStorage.setItem('monitor-sla-filter-days', selectedDays);
         
-        document.querySelectorAll('#content .filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+        // Manage active classes using the global function
+        window.handleDateFilterClick('sla-date-filters', btn.id, 'monitor-sla-filter-days');
         
         const content = document.getElementById('content');
-        content.classList.add('loading');
+        content.classList.add('opacity-50', 'pointer-events-none');
         
         await renderSlaData(selectedDays); 
         
-        content.classList.remove('loading');
+        content.classList.remove('opacity-50', 'pointer-events-none');
       });
     });
 
+    await loadChannelInfo();
     await renderSlaData(selectedDays); 
   }
 };

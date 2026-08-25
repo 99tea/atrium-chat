@@ -4,109 +4,116 @@
 <meta charset="UTF-8">
 <title>Atrium Monitor</title>
 <link rel="icon" href="img/dark_logo.png">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/output.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body>
-<div class="app">
+<body class="bg-bg text-text font-sans m-0 h-screen overflow-hidden flex flex-col antialiased">
   
-  <!-- BARRA SUPERIOR -->
-  <header class="topbar">
-    <div class="topbar-left">
-      <button id="sidebar-toggle" class="sidebar-toggle" data-tooltip="Expandir/Recolher"><i class="bi bi-list"></i></button>
-      <img src="img/dark_logo.png" alt="Logo" class="topbar-logo">
-      <span class="topbar-title">Atrium Monitor</span>
-      <button class="topbar-search-btn" onclick="openCmd()">
-        <i class="bi bi-search"></i>
-        <span>Busca rápida...</span>
-        <div class="topbar-kbd">Ctrl K</div>
+  <header id="topbar" class="flex items-center justify-between h-[60px] shrink-0 bg-panel border-b border-border px-6 z-50 transition-all">
+    <div class="flex items-center gap-4">
+      <button id="sidebar-toggle" class="bg-transparent border-none text-muted text-xl p-1 cursor-pointer flex items-center hover:text-text transition-colors" data-tooltip="Expandir/Recolher">
+        <i class="bi bi-list"></i>
+      </button>
+      <img src="img/dark_logo.png" alt="Logo" class="w-6 cursor-pointer topbar-logo">
+      <span class="text-base font-semibold text-text hidden sm:block">Atrium Monitor</span>
+      
+      <button class="hidden md:flex items-center gap-3 bg-white/5 hover:bg-white/10 border border-border hover:border-muted text-muted hover:text-text text-sm rounded-lg px-3 py-1.5 ml-4 transition-all" onclick="openCmd()">
+        <i class="bi bi-search"></i> Busca rápida...
+        <kbd class="bg-bg border border-border px-1.5 py-0.5 rounded text-[0.7rem] font-semibold tracking-wide">Ctrl K</kbd>
       </button>
     </div>
 
-    <div class="topbar-right">
-      <div style="display: flex; align-items: center; gap: 12px; padding-right: 16px; border-right: 1px solid var(--border); margin-right: 16px;">
-        
-        <div class="dropdown" style="position: relative; display: inline-block;">
-          <button id="export-btn" class="topbar-btn" data-tooltip="Exportar Relatório">
+    <div class="flex items-center gap-2 md:gap-4">
+      <div class="flex items-center gap-2 pr-4 border-r border-border mr-2">
+        <div class="relative inline-block">
+          <button id="export-btn" class="text-muted hover:text-text text-lg p-1.5 rounded-md hover:bg-white/5 transition-colors flex items-center" data-tooltip="Exportar Relatório">
             <i class="bi bi-download"></i>
           </button>
-          <div class="dropdown-content" id="export-dropdown-content">
-            <button onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf"></i> Exportar como PDF</button>
-            <button onclick="exportToCSV()"><i class="bi bi-file-earmark-spreadsheet"></i> Exportar Tabelas (CSV)</button>
+          <div id="export-dropdown-content" class="hidden absolute right-0 top-[110%] bg-panel-light min-w-[220px] shadow-[0_8px_24px_rgba(0,0,0,0.5)] rounded-lg border border-border overflow-hidden z-[1000] flex-col">
+            <button onclick="exportToPDF()" class="w-full bg-transparent text-text px-4 py-3 text-left text-sm flex items-center gap-2.5 hover:bg-white/5 transition-colors">
+              <i class="bi bi-file-earmark-pdf"></i> Exportar como PDF
+            </button>
+            <button onclick="exportToCSV()" class="w-full bg-transparent text-text px-4 py-3 text-left text-sm flex items-center gap-2.5 hover:bg-white/5 transition-colors border-t border-border">
+              <i class="bi bi-file-earmark-spreadsheet"></i> Exportar Tabelas (CSV)
+            </button>
           </div>
         </div>
 
-        <div class="auto-refresh-dropdown">
-          <button id="auto-refresh-btn" class="topbar-btn" data-tooltip="Atualização Automática">
+        <div class="relative inline-block">
+          <button id="auto-refresh-btn" class="text-muted hover:text-text text-lg p-1.5 rounded-md hover:bg-white/5 transition-colors flex items-center gap-1.5" data-tooltip="Atualização Automática">
             <i class="bi bi-arrow-clockwise"></i> 
-            <span id="refresh-indicator" style="font-size: 0.75rem; font-weight: bold; color: var(--accent-green); display: none;">ON</span>
+            <span id="refresh-indicator" class="text-[0.75rem] font-bold text-accent-green hidden">ON</span>
           </button>
-          <div class="dropdown-content" id="refresh-dropdown-content">
-            <button onclick="setAutoRefresh(0)">Desativado</button>
-            <button onclick="setAutoRefresh(60000)">1 minuto</button>
-            <button onclick="setAutoRefresh(300000)">5 minutos</button>
-            <button onclick="setAutoRefresh(900000)">15 minutos</button>
+          <div id="refresh-dropdown-content" class="hidden absolute right-0 top-[110%] bg-panel-light min-w-[160px] shadow-[0_8px_24px_rgba(0,0,0,0.5)] rounded-lg border border-border overflow-hidden z-[1000] flex-col">
+            <button onclick="setAutoRefresh(0)" class="w-full bg-transparent text-text px-4 py-3 text-left text-sm hover:bg-white/5 transition-colors">Desativado</button>
+            <button onclick="setAutoRefresh(60000)" class="w-full bg-transparent text-text px-4 py-3 text-left text-sm hover:bg-white/5 transition-colors border-t border-border border-opacity-50">1 minuto</button>
+            <button onclick="setAutoRefresh(300000)" class="w-full bg-transparent text-text px-4 py-3 text-left text-sm hover:bg-white/5 transition-colors border-t border-border border-opacity-50">5 minutos</button>
+            <button onclick="setAutoRefresh(900000)" class="w-full bg-transparent text-text px-4 py-3 text-left text-sm hover:bg-white/5 transition-colors border-t border-border border-opacity-50">15 minutos</button>
           </div>
         </div>
 
-        <button onclick="toggleTheme()" class="topbar-btn" data-tooltip="Alternar Tema">
+        <button onclick="toggleTheme()" class="text-muted hover:text-text text-lg p-1.5 rounded-md hover:bg-white/5 transition-colors flex items-center" data-tooltip="Alternar Tema">
           <i class="bi bi-moon-stars" id="theme-icon"></i>
         </button>
-        <button onclick="toggleFullScreen()" class="topbar-btn" data-tooltip="Modo TV (Tela Cheia)">
+        <button onclick="toggleFullScreen()" class="text-muted hover:text-text text-lg p-1.5 rounded-md hover:bg-white/5 transition-colors flex items-center" data-tooltip="Modo TV (Tela Cheia)">
           <i class="bi bi-arrows-fullscreen"></i>
         </button>
-        <button onclick="openBugReportModal()" class="topbar-btn" data-tooltip="Reportar Problema">
+        <button onclick="openBugReportModal()" class="text-muted hover:text-text text-lg p-1.5 rounded-md hover:bg-white/5 transition-colors flex items-center" data-tooltip="Reportar Problema">
           <i class="bi bi-bug"></i>
         </button>
       </div>
-  
-      <div class="user-dropdown">
-        <div class="user-info" id="user-menu-btn">
-          <i class="bi bi-person-circle"></i>
-          <span id="user-name"></span>
-          <i class="bi bi-chevron-down" style="font-size: 0.8rem;"></i>
+      
+      <div class="relative inline-block">
+        <div id="user-menu-btn" class="flex items-center gap-2 font-medium cursor-pointer px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors text-muted hover:text-text">
+          <i class="bi bi-person-circle text-xl"></i>
+          <span id="user-name" class="text-sm hidden sm:block"></span>
+          <i class="bi bi-chevron-down text-[0.7rem] hidden sm:block"></i>
         </div>
-        <div class="dropdown-content" id="user-dropdown-content">
-          <button onclick="openProfileModal()"><i class="bi bi-person-badge"></i> Dados Pessoais</button>
-          <button onclick="logout()" class="text-red"><i class="bi bi-box-arrow-right"></i> Sair do sistema</button>
+        <div id="user-dropdown-content" class="hidden absolute right-0 top-[110%] bg-panel-light min-w-[180px] shadow-[0_8px_24px_rgba(0,0,0,0.5)] rounded-lg border border-border overflow-hidden z-[1000] flex-col">
+          <button onclick="openProfileModal()" class="w-full bg-transparent text-text px-4 py-3 text-left text-sm flex items-center gap-2.5 hover:bg-white/5 transition-colors">
+            <i class="bi bi-person-badge"></i> Dados Pessoais
+          </button>
+          <button onclick="logout()" class="w-full bg-transparent text-accent-red border-t border-border px-4 py-3 text-left text-sm flex items-center gap-2.5 hover:bg-white/5 transition-colors">
+            <i class="bi bi-box-arrow-right"></i> Sair do sistema
+          </button>
         </div>
       </div>
     </div>
   </header>
   
-  <!-- CONTEÚDO PRINCIPAL (SIDEBAR + MAIN) -->
-  <div class="main-container">
-    <nav class="sidebar">
-      <ul id="nav-list"></ul>
-    </nav>
-    <main id="content"></main>
+  <div class="flex flex-1 overflow-hidden relative">
+<aside id="sidebar" class="w-[220px] shrink-0 bg-panel border-r border-border flex flex-col py-3 transition-[width] duration-300 z-40 overflow-x-hidden group [&.collapsed]:w-[76px] [&.collapsed]:min-w-[76px]">      <ul id="nav-list" class="list-none p-0 m-0 flex flex-col gap-1 group-[.collapsed]:gap-4 group-[.collapsed]:mt-2"></ul>
+    </aside>
+    <main id="content" class="flex-1 h-full p-7 md:p-9 min-w-0 overflow-y-auto overflow-x-hidden relative transition-all duration-300"></main>
   </div>
 
-</div>
-
-<!-- MODAL DE PERFIL (Fora da hierarquia principal) -->
-<div id="profile-modal" class="modal hidden">
-  <div class="modal-content profile-modal-content" style="max-width: 400px; width: 100%;">
-    <button class="modal-close" onclick="closeProfileModal()" style="z-index: 10; color: #fff;">&times;</button>
-    <div class="profile-cover"></div>
-    <div class="profile-avatar-wrapper">
-      <i class="bi bi-person-circle"></i>
+<!-- MODAL DE PERFIL -->
+<div id="profile-modal" class="hidden fixed inset-0 bg-bg/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-5">
+  <div class="bg-panel border border-border rounded-2xl w-full max-w-[400px] flex flex-col relative shadow-[0_10px_40px_rgba(0,0,0,0.6)] overflow-hidden">
+    <button class="absolute top-3 right-4 bg-transparent border-none text-white/70 hover:text-white text-2xl cursor-pointer z-10" onclick="closeProfileModal()">&times;</button>
+    
+    <div class="h-[100px] bg-gradient-to-br from-panel-light to-accent relative"></div>
+    
+    <div class="-mt-10 flex justify-center relative">
+      <i class="bi bi-person-circle text-[5rem] text-text bg-panel rounded-full p-1 border-4 border-panel leading-none"></i>
     </div>
-    <div class="profile-info-section">
-      <h3 id="profile-modal-name" class="profile-name"></h3>
-      <span id="profile-modal-role" class="profile-role-badge"></span>
-      <div class="profile-details-grid">
-        <div class="profile-detail-item">
-          <span class="profile-detail-label">ID da Conta</span>
-          <span id="profile-modal-account" class="profile-detail-value"></span>
+    
+    <div class="p-6 text-center flex flex-col items-center">
+      <h3 id="profile-modal-name" class="text-xl font-bold m-0 mb-2"></h3>
+      <span id="profile-modal-role" class="inline-block bg-accent/15 text-accent border border-accent/30 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide mb-6"></span>
+      
+      <div class="grid grid-cols-2 gap-4 bg-bg p-4 rounded-xl border border-border w-full">
+        <div class="flex flex-col gap-1 items-center">
+          <span class="text-xs text-muted uppercase font-semibold">ID da Conta</span>
+          <span id="profile-modal-account" class="text-base font-semibold text-text"></span>
         </div>
-        <div class="profile-detail-item">
-          <span class="profile-detail-label">Status</span>
-          <span class="profile-detail-value" style="color: var(--accent-green); display: flex; align-items: center; gap: 6px;">
-            <i class="bi bi-circle-fill" style="font-size: 0.5rem;"></i> Ativo
+        <div class="flex flex-col gap-1 items-center">
+          <span class="text-xs text-muted uppercase font-semibold">Status</span>
+          <span class="text-base font-semibold text-accent-green flex items-center gap-1.5">
+            <i class="bi bi-circle-fill text-[0.5rem]"></i> Ativo
           </span>
         </div>
       </div>

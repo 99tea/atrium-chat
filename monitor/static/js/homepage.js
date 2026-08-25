@@ -1,33 +1,34 @@
-const HOME_CHANNEL_MAP = {
-  whatsapp: { label: 'WhatsApp', color: '#34d399' },
-  email: { label: 'E-mail', color: '#29a3ff' },
-  other: { label: 'Outros', color: '#9296b8' },
-};
-
-const HOME_WEEKDAY_SHORT = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
-const HOME_MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const HOME_CHANNEL_PALETTE = ['#a78bfa', '#fb923c', '#38bdf8', '#f472b6', '#4ade80', '#facc15'];
+let HOME_CHANNEL_INFO = {};
 let homeCalendarDate = new Date();
 let homeClockInterval = null;
 
-// --- FUNÇÕES DA AGENDA PESSOAL (LOCALSTORAGE) ---
-function getMarkedDates() {
-  return JSON.parse(localStorage.getItem('monitor_marked_dates') || '[]');
+async function loadHomeChannelInfo() {
+  const channels = await (await fetch('/monitor/api/channels')).json();
+  HOME_CHANNEL_INFO = {};
+  let paletteIdx = 0;
+  channels.forEach(c => {
+    if (c.channel_key === 'whatsapp') { HOME_CHANNEL_INFO[c.channel_key] = { label: c.channel_name, color: '#34d399' }; }
+    else if (c.channel_key === 'email') { HOME_CHANNEL_INFO[c.channel_key] = { label: c.channel_name, color: '#29a3ff' }; }
+    else {
+      HOME_CHANNEL_INFO[c.channel_key] = { label: c.channel_name, color: HOME_CHANNEL_PALETTE[paletteIdx % HOME_CHANNEL_PALETTE.length] };
+      paletteIdx++;
+    }
+  });
+  HOME_CHANNEL_INFO.other = { label: 'Outros', color: '#9296b8' };
 }
 
-function saveMarkedDates(dates) {
-  localStorage.setItem('monitor_marked_dates', JSON.stringify(dates));
-}
+const HOME_WEEKDAY_SHORT = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+const HOME_MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+function getMarkedDates() { return JSON.parse(localStorage.getItem('monitor_marked_dates') || '[]'); }
+function saveMarkedDates(dates) { localStorage.setItem('monitor_marked_dates', JSON.stringify(dates)); }
 
 window.toggleMarkedDate = function(y, m, d) {
   const dateStr = `${y}-${String(m+1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   let dates = getMarkedDates();
-  
-  if (dates.includes(dateStr)) {
-    dates = dates.filter(x => x !== dateStr);
-  } else {
-    dates.push(dateStr);
-  }
-  
+  if (dates.includes(dateStr)) dates = dates.filter(x => x !== dateStr);
+  else dates.push(dateStr);
   saveMarkedDates(dates);
   renderHomeCalendar();
   renderMarkedDatesList();
@@ -39,7 +40,7 @@ window.renderMarkedDatesList = function() {
   if(!container) return;
 
   if(dates.length === 0) {
-    container.innerHTML = '<div class="empty-state" style="padding: 16px 0; text-align: center;"><i class="bi bi-calendar-event" style="font-size: 1.5rem; color: var(--border); margin-bottom: 8px;"></i><span style="font-size: 0.8rem; color: var(--muted); display: block;">Nenhum dia marcado</span></div>';
+    container.innerHTML = '<div class="p-4 text-center flex flex-col items-center"><i class="bi bi-calendar-event text-2xl text-border mb-2"></i><span class="text-xs text-muted">Nenhum dia marcado</span></div>';
     return;
   }
 
@@ -50,25 +51,22 @@ window.renderMarkedDatesList = function() {
     const isPast = dateObj < new Date(new Date().setHours(0,0,0,0));
     
     return `
-      <div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; transition: transform 0.2s; opacity: ${isPast ? '0.6' : '1'};">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <i class="bi bi-bookmark-star-fill" style="color: var(--accent-yellow); font-size: 0.8rem;"></i>
-          <span style="font-weight: 600; font-size: 0.8rem; color: var(--text);">${formatted}</span>
+      <div class="flex justify-between items-center px-3 py-2 bg-panel-light border border-border rounded-lg mb-2 transition-all hover:-translate-y-0.5 hover:shadow-md ${isPast ? 'opacity-60' : 'opacity-100'}">
+        <div class="flex items-center gap-2">
+          <i class="bi bi-bookmark-star-fill text-accent-yellow text-sm"></i>
+          <span class="font-semibold text-xs text-text">${formatted}</span>
         </div>
-        <button class="topbar-btn" style="padding: 2px 6px; border: none; background: transparent; cursor: pointer; color: var(--muted);" onmouseover="this.style.color='var(--accent-red)'" onmouseout="this.style.color='var(--muted)'" onclick="toggleMarkedDate(${y}, ${m-1}, ${d})" data-tooltip="Desmarcar">
-          <i class="bi bi-x-lg" style="font-size: 0.75rem;"></i>
+        <button class="p-1 cursor-pointer bg-transparent border-none text-muted hover:text-accent-red transition-colors" onclick="toggleMarkedDate(${y}, ${m-1}, ${d})">
+          <i class="bi bi-x-lg text-[0.75rem]"></i>
         </button>
       </div>`;
   }).join('');
 }
-// ------------------------------------------------
 
 function homeInitials(name) {
   if (!name) return '?';
   const parts = name.trim().split(/\s+/);
-  const first = parts[0]?.[0] || '';
-  const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
-  return (first + last).toUpperCase();
+  return (parts[0]?.[0] || '') + (parts.length > 1 ? parts[parts.length - 1][0] : '').toUpperCase();
 }
 
 function homeGreeting() {
@@ -97,146 +95,55 @@ function renderHomeCalendar() {
   const markedDates = getMarkedDates();
 
   document.getElementById('home-cal-title').textContent = `${HOME_MONTH_NAMES[month]} ${year}`;
-
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   let cells = '';
-  // Dias vazios
-  for (let i = 0; i < firstDay; i++) {
-    cells += `<div style="aspect-ratio: 1; border-radius: 8px; background: transparent;"></div>`;
-  }
+  for (let i = 0; i < firstDay; i++) cells += `<div></div>`;
   
-  // Dias do mês
   for (let d = 1; d <= daysInMonth; d++) {
     const isToday = isCurrentMonth && d === today.getDate();
     const dateStr = `${year}-${String(month+1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const isMarked = markedDates.includes(dateStr);
 
-    let cellStyle = `aspect-ratio: 1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; cursor: pointer; position: relative; transition: all 0.2s ease; user-select: none;`;
-    let defaultBg = 'var(--bg)';
-    
-    if (isToday) {
-      cellStyle += ` background: var(--accent); color: #fff; font-weight: 700; box-shadow: 0 4px 10px rgba(143, 22, 27, 0.4); border: 1px solid var(--accent);`;
-    } else {
-      if (isMarked) {
-        defaultBg = 'rgba(255, 194, 71, 0.08)';
-        cellStyle += ` background: ${defaultBg}; border: 1px solid var(--accent-yellow); color: var(--text); font-weight: 600;`;
-      } else {
-        cellStyle += ` background: ${defaultBg}; border: 1px solid var(--border); color: var(--text);`;
-      }
-    }
+    let baseClasses = "aspect-square rounded-md flex items-center justify-center text-[0.8rem] cursor-pointer relative transition-all select-none ";
+    if (isToday) baseClasses += "bg-accent text-white font-bold glow-border hover:scale-105";
+    else if (isMarked) baseClasses += "bg-accent-yellow/10 border border-accent-yellow text-text hover:bg-panel-light hover:scale-105";
+    else baseClasses += "bg-bg border border-transparent text-text hover:border-border hover:scale-105";
 
-    let innerHtml = `${d}`;
-    if (isMarked) {
-      const dotColor = isToday ? '#fff' : 'var(--accent-yellow)';
-      const dotShadow = isToday ? '0 0 4px rgba(255,255,255,0.8)' : '0 0 6px var(--accent-yellow)';
-      innerHtml += `<span style="position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: ${dotColor}; box-shadow: ${dotShadow};"></span>`;
-    }
-
-    const hoverIn = isToday ? `this.style.transform='scale(1.05)'` : `this.style.background='var(--panel-light)'; this.style.transform='scale(1.05)'`;
-    const hoverOut = isToday ? `this.style.transform='scale(1)'` : `this.style.background='${defaultBg}'; this.style.transform='scale(1)'`;
-
-    cells += `<div style="${cellStyle}" onmouseover="${hoverIn}" onmouseout="${hoverOut}" onclick="toggleMarkedDate(${year}, ${month}, ${d})" title="Clique para marcar/desmarcar">${innerHtml}</div>`;
+    let dot = isMarked ? `<span class="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${isToday ? 'bg-white' : 'bg-accent-yellow'}"></span>` : '';
+    cells += `<div class="${baseClasses}" onclick="toggleMarkedDate(${year}, ${month}, ${d})">${d}${dot}</div>`;
   }
-
-  const grid = document.getElementById('home-cal-grid');
-  grid.style.gap = '6px';
-  grid.innerHTML = cells;
+  document.getElementById('home-cal-grid').innerHTML = cells;
 }
 
 function setupHomeCalendarNav() {
-  document.getElementById('home-cal-prev').onclick = () => {
-    homeCalendarDate = new Date(homeCalendarDate.getFullYear(), homeCalendarDate.getMonth() - 1, 1);
-    renderHomeCalendar();
-  };
-  document.getElementById('home-cal-next').onclick = () => {
-    homeCalendarDate = new Date(homeCalendarDate.getFullYear(), homeCalendarDate.getMonth() + 1, 1);
-    renderHomeCalendar();
-  };
-  document.getElementById('home-cal-today-btn').onclick = () => {
-    homeCalendarDate = new Date();
-    renderHomeCalendar();
-  };
+  document.getElementById('home-cal-prev').onclick = () => { homeCalendarDate = new Date(homeCalendarDate.getFullYear(), homeCalendarDate.getMonth() - 1, 1); renderHomeCalendar(); };
+  document.getElementById('home-cal-next').onclick = () => { homeCalendarDate = new Date(homeCalendarDate.getFullYear(), homeCalendarDate.getMonth() + 1, 1); renderHomeCalendar(); };
+  document.getElementById('home-cal-today-btn').onclick = () => { homeCalendarDate = new Date(); renderHomeCalendar(); };
 }
 
 function homeTaskItem(t) {
   return `
-    <div class="home-task-item${t.done ? ' home-task-done' : ''}" data-task-id="${t.id}" draggable="true" style="display: flex; align-items: flex-start; gap: 10px; background: var(--bg); padding: 12px; border-radius: 8px; border: 1px solid var(--border); transition: transform 0.15s, box-shadow 0.15s; margin-bottom: 8px; cursor: grab;">
-      <input type="checkbox" class="home-task-check" ${t.done ? 'checked' : ''} style="margin-top: 3px; cursor: pointer; accent-color: var(--accent);">
-      <span class="home-task-content" style="flex: 1; font-size: 0.85rem; line-height: 1.4; word-break: break-word; color: ${t.done ? 'var(--muted)' : 'var(--text)'}; text-decoration: ${t.done ? 'line-through' : 'none'};">${t.content}</span>
-      <i class="bi bi-x-lg home-task-remove" data-tooltip="Remover" style="cursor: pointer; font-size: 0.9rem; color: var(--muted); padding: 2px;"></i>
+    <div class="group flex items-start gap-3 bg-bg p-3 rounded-lg border border-border transition-all mb-2 cursor-grab hover:border-muted ${t.done ? 'opacity-50' : ''}" data-task-id="${t.id}" draggable="true">
+      <input type="checkbox" class="home-task-check mt-0.5 cursor-pointer accent-accent w-4 h-4" ${t.done ? 'checked' : ''}>
+      <span class="flex-1 text-[0.85rem] leading-tight ${t.done ? 'text-muted line-through' : 'text-text'}">${t.content}</span>
+      <i class="bi bi-x-lg home-task-remove cursor-pointer text-muted opacity-0 hover:text-accent-red transition-all group-hover:opacity-100"></i>
     </div>`;
 }
 
 async function loadHomeTasks() {
   const tasks = await fetch('/monitor/api/home/tasks').then(r => r.ok ? r.json() : []).catch(() => []);
   const list = document.getElementById('home-tasks-list');
+  list.innerHTML = tasks.length ? tasks.map(homeTaskItem).join('') : '<div class="p-6 text-center"><i class="bi bi-check2-circle text-3xl text-accent-green mb-2"></i><span class="block text-sm text-muted">Tudo limpo!</span></div>';
 
-  if (tasks.length === 0) {
-    list.innerHTML = '<div class="empty-state" style="padding: 16px; height: 100%; display: flex; flex-direction: column; justify-content: center;"><i class="bi bi-check2-circle" style="font-size: 2rem; color: var(--accent-green); margin-bottom: 8px;"></i><span style="font-size: 0.9rem;">Nenhuma tarefa pendente</span></div>';
-  } else {
-    list.innerHTML = tasks.map(homeTaskItem).join('');
-  }
-
-  let draggedItem = null;
-
-  list.querySelectorAll('.home-task-item').forEach(item => {
-    item.addEventListener('dragstart', function () {
-      draggedItem = this;
-      setTimeout(() => {
-        this.style.opacity = '0.5';
-        this.style.border = '1px dashed var(--accent)';
-      }, 0);
-    });
-
-    item.addEventListener('dragend', function () {
-      this.style.opacity = '1';
-      this.style.border = '1px solid var(--border)';
-      draggedItem = null;
-    });
-
-    item.addEventListener('dragover', function (e) {
-      e.preventDefault();
-    });
-
-    item.addEventListener('dragenter', function (e) {
-      e.preventDefault();
-      this.style.borderTop = '2px solid var(--accent)';
-    });
-
-    item.addEventListener('dragleave', function () {
-      this.style.borderTop = '';
-    });
-
-    item.addEventListener('drop', function () {
-      this.style.borderTop = '';
-      if (draggedItem && draggedItem !== this) {
-        const allItems = [...list.querySelectorAll('.home-task-item')];
-        const draggedIndex = allItems.indexOf(draggedItem);
-        const droppedIndex = allItems.indexOf(this);
-
-        if (draggedIndex < droppedIndex) {
-          this.parentNode.insertBefore(draggedItem, this.nextSibling);
-        } else {
-          this.parentNode.insertBefore(draggedItem, this);
-        }
-      }
-    });
-
+  list.querySelectorAll('.group[draggable]').forEach(item => {
     item.querySelector('.home-task-check').addEventListener('change', async (e) => {
-      const taskId = item.dataset.taskId;
-      await fetch(`/monitor/api/home/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ done: e.target.checked })
-      });
+      await fetch(`/monitor/api/home/tasks/${item.dataset.taskId}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ done: e.target.checked }) });
       await loadHomeTasks();
     });
-
-    item.querySelector('.home-task-remove').addEventListener('click', async (e) => {
-      const taskId = item.dataset.taskId;
-      await fetch(`/monitor/api/home/tasks/${taskId}`, { method: 'DELETE' });
+    item.querySelector('.home-task-remove').addEventListener('click', async () => {
+      await fetch(`/monitor/api/home/tasks/${item.dataset.taskId}`, { method: 'DELETE' });
       await loadHomeTasks();
     });
   });
@@ -244,192 +151,172 @@ async function loadHomeTasks() {
 
 async function addHomeTask() {
   const input = document.getElementById('home-task-input');
-  const content = input.value.trim();
-  if (!content) return;
-  await fetch('/monitor/api/home/tasks', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ content })
-  });
+  if (!input.value.trim()) return;
+  await fetch('/monitor/api/home/tasks', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ content: input.value.trim() }) });
   input.value = '';
   await loadHomeTasks();
 }
 
 async function loadHomeStats() {
   const stats = await fetch('/monitor/api/home/stats').then(r => r.ok ? r.json() : {}).catch(() => ({}));
-
   document.getElementById('home-stat-created').textContent = stats.created_today ?? '-';
   document.getElementById('home-stat-resolved').textContent = stats.resolved_today ?? '-';
   document.getElementById('home-stat-agents-online').textContent = stats.agents_online ?? '-';
 
   const hourly = stats.hourly || [];
+  const channelKeys = Object.keys(HOME_CHANNEL_INFO);
   const fullDay = Array.from({ length: 24 }, (_, i) => {
-    const hrStr = i.toString().padStart(2, '0') + ':00';
     const found = hourly.find(r => r.hour === i);
-    return {
-      hour: hrStr,
-      created_whatsapp: found ? found.created_whatsapp : 0,
-      created_email: found ? found.created_email : 0,
-      created_other: found ? found.created_other : 0,
-      resolved: found ? found.resolved : 0,
-    };
+    const row = { hour: i.toString().padStart(2, '0') + 'h', resolved: found ? found.resolved : 0 };
+    channelKeys.forEach(k => row[k] = found ? (found[`created_${k}`] || 0) : 0);
+    return row;
   });
+
+  const createdDatasets = channelKeys.map(k => ({
+    label: HOME_CHANNEL_INFO[k].label, data: fullDay.map(r => r[k]), backgroundColor: HOME_CHANNEL_INFO[k].color, stack: 'created', borderRadius: 4, barPercentage: 0.6
+  }));
 
   renderChart('home-chart-hourly', {
     type: 'bar',
-    data: {
-      labels: fullDay.map(r => r.hour),
-      datasets: [
-        { label: 'WhatsApp', data: fullDay.map(r => r.created_whatsapp), backgroundColor: '#34d399', stack: 'created', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
-        { label: 'E-mail', data: fullDay.map(r => r.created_email), backgroundColor: '#29a3ff', stack: 'created', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
-        { label: 'Outros', data: fullDay.map(r => r.created_other), backgroundColor: '#9296b8', stack: 'created', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
-        { label: 'Resolvidas', data: fullDay.map(r => r.resolved), backgroundColor: '#ffc247', borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.7, categoryPercentage: 0.8 },
-      ],
-    },
+    data: { labels: fullDay.map(r => r.hour), datasets: [...createdDatasets, { label: 'Resolvidas', data: fullDay.map(r => r.resolved), backgroundColor: '#ffc247', borderRadius: 4, barPercentage: 0.6 }] },
     options: {
       maintainAspectRatio: false,
-      plugins: { 
-        legend: { 
-          position: 'top', 
-          align: 'end',
-          labels: { boxWidth: 10, usePointStyle: true, padding: 16, font: { size: 11 } } 
-        } 
-      },
+      plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 8, usePointStyle: true, font: { size: 10 } } } },
       scales: {
-        x: { grid: { display: false, drawBorder: false }, ticks: { maxTicksLimit: 12, font: { size: 10 } } },
-        y: { grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false }, ticks: { stepSize: 1, font: { size: 10 } } }
-      },
-    },
+        x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { stepSize: 1, font: { size: 9 } } }
+      }
+    }
   });
 }
 
 Screens.home = {
   template: `
-    <div class="home-social-layout">
+    <div class="flex flex-col gap-6 w-full max-w-[1400px] mx-auto no-scrollbar">
       
-      <!-- Coluna Esquerda -->
-      <div class="home-col-left" style="display: flex; flex-direction: column; gap: 24px;">
-        
-        <div class="home-profile-card" style="padding: 24px 16px; background: linear-gradient(180deg, var(--panel-light) 0%, var(--panel) 100%); border: 1px solid var(--border); border-top: 4px solid var(--accent); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px;">
-          <div class="home-avatar" id="home-avatar" style="width: 72px; height: 72px; font-size: 1.8rem; background: linear-gradient(135deg, var(--accent), var(--accent-red)); box-shadow: 0 4px 12px rgba(143, 22, 27, 0.3); margin-bottom: 16px;"></div>
-          <h2 class="home-greeting" id="home-greeting" style="margin: 0 0 4px; font-size: 1.2rem;"></h2>
-          <p class="muted-text home-date" id="home-date" style="font-size: 0.85rem; margin: 0;"></p>
-          <div class="home-clock" id="home-clock" style="font-size: 1.6rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 16px;"></div>
+      <!-- Top Row: Welcome & Quick KPIs -->
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <!-- Welcome Widget -->
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex items-center p-5 gap-4 col-span-1">
+          <div id="home-avatar" class="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold text-white bg-gradient-to-br from-accent to-accent-red glow-border shrink-0"></div>
+          <div class="flex-1 min-w-0">
+            <h2 id="home-greeting" class="m-0 text-base font-bold text-text truncate"></h2>
+            <div id="home-clock" class="text-xl font-bold text-accent tabular-nums glow-text"></div>
+            <p id="home-date" class="m-0 text-xs text-muted truncate"></p>
+          </div>
         </div>
 
-        <div class="home-panel" style="display: flex; flex-direction: column; background: var(--panel); border-radius: 12px; border: 1px solid var(--border); padding: 16px;">
-          
-          <div class="home-panel-header" style="border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 4px;">
-            <h3 style="margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;"><i class="bi bi-calendar3" style="color: var(--accent-blue); margin-right: 4px;"></i></h3>
-            <div style="display:flex; gap:2px; align-items:center; flex-shrink: 0;">
-              <button class="home-cal-nav-btn" id="home-cal-prev" style="padding: 2px 6px; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; cursor: pointer; color: var(--text); transition: background 0.2s;" onmouseover="this.style.background='var(--panel-light)'" onmouseout="this.style.background='var(--bg)'"><i class="bi bi-chevron-left"></i></button>
-              <span id="home-cal-title" style="font-weight: 600; text-align: center; font-size: 0.8rem; padding: 0 4px; white-space: nowrap;"></span>
-              <button class="home-cal-nav-btn" id="home-cal-next" style="padding: 2px 6px; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; cursor: pointer; color: var(--text); transition: background 0.2s;" onmouseover="this.style.background='var(--panel-light)'" onmouseout="this.style.background='var(--bg)'"><i class="bi bi-chevron-right"></i></button>
-            </div>
+        <!-- KPIs -->
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm p-5 flex items-center gap-4 hover:border-accent-green/50 transition-colors group col-span-1">
+          <div class="w-12 h-12 rounded-lg bg-accent-green/10 text-accent-green flex items-center justify-center text-xl group-hover:scale-110 transition-transform"><i class="bi bi-inbox"></i></div>
+          <div>
+            <span class="block text-[0.7rem] text-muted font-bold uppercase tracking-wider">Criadas Hoje</span>
+            <span id="home-stat-created" class="block text-2xl font-bold text-text">-</span>
           </div>
-          
-          <div class="home-cal-weekdays" style="margin-bottom: 6px;">
-            ${HOME_WEEKDAY_SHORT.map(w => `<div>${w}</div>`).join('')}
-          </div>
-          
-          <div class="home-cal-grid" id="home-cal-grid" style="margin-bottom: 12px;"></div>
-          
-          <div style="display: flex; gap: 8px;">
-             <button class="home-cal-today-btn" id="home-cal-today-btn" style="flex: 1; padding: 6px; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; cursor: pointer; color: var(--text); font-weight: 500; font-size: 0.8rem; transition: background 0.2s;" onmouseover="this.style.background='var(--panel-light)'" onmouseout="this.style.background='var(--bg)'">Ir para Hoje</button>
-          </div>
-
-          <!-- AGENDA (Lista de marcados) -->
-          <div style="display:flex; justify-content:space-between; align-items:center; margin: 16px 0 10px; padding-top: 14px; border-top: 1px solid var(--border);">
-            <h4 style="margin:0; font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;"><i class="bi bi-journal-bookmark" style="margin-right: 6px;"></i> Agenda</h4>
-          </div>
-          <div id="home-marked-dates-list" style="max-height: 200px; overflow-y: auto; overflow-x: hidden; padding-right: 4px;"></div>
-
         </div>
 
-      </div>
-
-      <!-- Coluna Central (Feed principal) -->
-      <div class="home-col-main" style="display: flex; flex-direction: column; gap: 24px;">
-        <div class="home-feed-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          
-          <div class="card" style="padding: 24px 20px; border-color: rgba(52, 211, 153, 0.3); background: linear-gradient(135deg, rgba(52, 211, 153, 0.05), var(--panel) 60%); display: flex; align-items: center; gap: 16px; flex-direction: row; justify-content: flex-start; margin: 0;">
-            <div style="width: 54px; height: 54px; border-radius: 12px; background: rgba(52, 211, 153, 0.1); color: var(--accent-green); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;"><i class="bi bi-inbox"></i></div>
-            <div style="text-align: left;">
-              <span class="home-stat-label" style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: block;">Criadas Hoje</span>
-              <span class="home-stat-value" id="home-stat-created" style="font-size: 2rem; font-weight: 700; line-height: 1;">-</span>
-            </div>
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm p-5 flex items-center gap-4 hover:border-accent-yellow/50 transition-colors group col-span-1">
+          <div class="w-12 h-12 rounded-lg bg-accent-yellow/10 text-accent-yellow flex items-center justify-center text-xl group-hover:scale-110 transition-transform"><i class="bi bi-check2-all"></i></div>
+          <div>
+            <span class="block text-[0.7rem] text-muted font-bold uppercase tracking-wider">Resolvidas Hoje</span>
+            <span id="home-stat-resolved" class="block text-2xl font-bold text-text">-</span>
           </div>
-
-          <div class="card" style="padding: 24px 20px; border-color: rgba(255, 194, 71, 0.3); background: linear-gradient(135deg, rgba(255, 194, 71, 0.05), var(--panel) 60%); display: flex; align-items: center; gap: 16px; flex-direction: row; justify-content: flex-start; margin: 0;">
-            <div style="width: 54px; height: 54px; border-radius: 12px; background: rgba(255, 194, 71, 0.1); color: var(--accent-yellow); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;"><i class="bi bi-check2-all"></i></div>
-            <div style="text-align: left;">
-              <span class="home-stat-label" style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: block;">Resolvidas Hoje</span>
-              <span class="home-stat-value" id="home-stat-resolved" style="font-size: 2rem; font-weight: 700; line-height: 1;">-</span>
-            </div>
-          </div>
-
         </div>
 
-        <div class="home-panel" style="display: flex; flex-direction: column; padding: 20px; flex: 1;">
-          <div class="home-panel-header" style="margin-bottom: 16px; border-bottom: none; padding-bottom: 0;">
-            <h3 style="margin: 0; font-size: 1rem;"><i class="bi bi-bar-chart" style="margin-right: 6px; color: var(--accent);"></i> Conversas por hora</h3>
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm p-5 flex items-center gap-4 hover:border-accent-blue/50 transition-colors group col-span-1 relative overflow-hidden">
+          <div class="w-12 h-12 rounded-lg bg-[#29a3ff1a] text-[#29a3ff] flex items-center justify-center text-xl group-hover:scale-110 transition-transform relative">
+            <i class="bi bi-headset"></i>
+            <span class="absolute top-0 right-0 w-2.5 h-2.5 bg-accent-green rounded-full border border-panel glow-border"></span>
           </div>
-          <div class="canvas-container" style="flex: 1; min-height: 250px;">
-            <canvas id="home-chart-hourly"></canvas>
+          <div>
+            <span class="block text-[0.7rem] text-muted font-bold uppercase tracking-wider">Agentes Online</span>
+            <span id="home-stat-agents-online" class="block text-2xl font-bold text-text">-</span>
           </div>
         </div>
       </div>
 
-      <!-- Coluna Direita -->
-      <div class="home-col-right" style="display: flex; flex-direction: column; gap: 24px;">
+      <!-- Main Row: Chart & Tasks -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        <div class="panel" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-color: rgba(41, 163, 255, 0.3); background: linear-gradient(135deg, rgba(41, 163, 255, 0.05), var(--panel) 60%); border-radius: 12px; margin: 0;">
-           <div style="display: flex; align-items: center; gap: 12px;">
-             <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(41, 163, 255, 0.1); color: #29a3ff; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; position: relative;">
-               <i class="bi bi-headset"></i>
-               <span class="home-online-dot" style="position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; background: var(--accent-green); border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 6px var(--accent-green);"></span>
-             </div>
-             <span style="font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted);">Agentes Online</span>
-           </div>
-           <span id="home-stat-agents-online" style="font-size: 1.8rem; font-weight: 700; color: var(--text);">-</span>
-        </div>
-
-        <div class="home-panel home-tasks-panel" style="display: flex; flex-direction: column; background: var(--panel); padding: 20px; border-radius: 12px; flex: 1;">
-          <div class="home-panel-header" style="border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">
-            <h3 style="margin: 0; font-size: 0.95rem;"><i class="bi bi-check2-square" style="color: var(--accent-yellow); margin-right: 6px;"></i> Minhas Tarefas</h3>
+        <!-- Chart Panel -->
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col lg:col-span-2">
+          <div class="px-5 py-4 border-b border-border flex justify-between items-center cursor-pointer select-none" onclick="togglePanel(this)">
+            <h3 class="m-0 text-sm font-semibold flex items-center gap-2 text-text"><i class="bi bi-bar-chart-fill text-accent"></i> Fluxo de Atendimento (Hora)</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
           </div>
-          <div id="home-tasks-list" class="home-tasks-list" style="max-height: 350px; overflow-y: auto; overflow-x: hidden; padding-right: 4px; margin-bottom: 16px;"></div>
-          <div class="home-task-input-row" style="display: flex; gap: 8px; margin-top: auto; padding: 0;">
-            <input id="home-task-input" type="text" placeholder="+ Nova tarefa..." maxlength="200" style="flex: 1; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.85rem;">
-            <button onclick="addHomeTask()" class="add-task-btn" style="padding: 12px 16px; border-radius: 8px;"><i class="bi bi-plus-lg"></i></button>
+          <div class="panel-content p-5 w-full">
+            <div class="relative w-full h-[280px]">
+              <canvas id="home-chart-hourly"></canvas>
+            </div>
           </div>
         </div>
 
+        <!-- Tasks Panel -->
+        <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col lg:col-span-1">
+          <div class="px-5 py-4 border-b border-border flex justify-between items-center cursor-pointer select-none" onclick="togglePanel(this)">
+            <h3 class="m-0 text-sm font-semibold flex items-center gap-2 text-text"><i class="bi bi-check2-square text-accent-yellow"></i> Minhas Tarefas</h3>
+            <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+          </div>
+          <div class="panel-content flex flex-col flex-1 p-0">
+            <div id="home-tasks-list" class="p-4 flex flex-col gap-1 overflow-y-auto max-h-[220px] no-scrollbar"></div>
+            <div class="p-4 border-t border-border bg-panel-light/30 mt-auto flex gap-2">
+              <input id="home-task-input" type="text" placeholder="Adicionar tarefa..." class="flex-1 px-3 py-2 rounded-lg border border-border bg-bg text-text text-xs focus:outline-none focus:border-accent">
+              <button onclick="addHomeTask()" class="bg-accent hover:bg-accent-hover text-white px-3 py-2 rounded-lg transition-colors"><i class="bi bi-plus-lg"></i></button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Row: Calendar Panel -->
+      <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col">
+        <div class="px-5 py-4 border-b border-border flex justify-between items-center cursor-pointer select-none" onclick="togglePanel(this)">
+          <h3 class="m-0 text-sm font-semibold flex items-center gap-2 text-text"><i class="bi bi-calendar3 text-accent-blue"></i> Calendário & Agenda</h3>
+          <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
+        </div>
+        <div class="panel-content p-5">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+            
+            <div class="max-w-[320px] mx-auto md:mx-0 w-full">
+              <div class="flex justify-between items-center mb-4">
+                <button id="home-cal-prev" class="p-1 text-muted hover:text-text transition-colors"><i class="bi bi-chevron-left"></i></button>
+                <span id="home-cal-title" class="font-semibold text-sm"></span>
+                <button id="home-cal-next" class="p-1 text-muted hover:text-text transition-colors"><i class="bi bi-chevron-right"></i></button>
+              </div>
+              <div class="grid grid-cols-7 text-center text-xs font-bold text-muted mb-2">
+                ${HOME_WEEKDAY_SHORT.map(w => `<div>${w}</div>`).join('')}
+              </div>
+              <div id="home-cal-grid" class="grid grid-cols-7 gap-1.5 mb-4"></div>
+              <button id="home-cal-today-btn" class="w-full py-2 bg-panel-light border border-border rounded-lg text-xs font-medium hover:border-accent transition-colors">Voltar para Hoje</button>
+            </div>
+
+            <div class="flex flex-col border-t md:border-t-0 md:border-l border-border pt-5 md:pt-0 md:pl-8 h-full">
+              <span class="block text-[0.75rem] text-muted font-bold uppercase tracking-wider mb-4">Datas Marcadas</span>
+              <div id="home-marked-dates-list" class="flex-1 overflow-y-auto max-h-[250px] no-scrollbar"></div>
+            </div>
+
+          </div>
+        </div>
       </div>
 
     </div>
   `,
   load: async function () {
     if (homeClockInterval) clearInterval(homeClockInterval);
-
     document.getElementById('home-avatar').textContent = homeInitials(currentUser.name);
     document.getElementById('home-greeting').textContent = `${homeGreeting()}, ${currentUser.name.split(' ')[0]}!`;
-
+    
     renderHomeClock();
     homeClockInterval = setInterval(renderHomeClock, 1000);
-
     homeCalendarDate = new Date();
+    
     renderHomeCalendar();
     setupHomeCalendarNav();
     renderMarkedDatesList();
 
-    document.getElementById('home-task-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') addHomeTask();
-    });
+    document.getElementById('home-task-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addHomeTask(); });
 
-    await Promise.all([
-      loadHomeTasks(),
-      loadHomeStats(),
-    ]);
+    await loadHomeChannelInfo();
+    await Promise.all([ loadHomeTasks(), loadHomeStats() ]);
   },
 };
