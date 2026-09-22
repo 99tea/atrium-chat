@@ -75,13 +75,12 @@ async def csat_by_agent(request: Request, days: int = 30, user=Depends(require_a
         rows = await conn.fetch(
             """
             SELECT c.assigned_agent_id,
-                max(s.assignee_name) AS assignee_name,
+                max(u.name) AS assignee_name,
                 count(*) AS total,
                 avg(c.rating) AS avg_rating,
                 count(*) FILTER (WHERE c.rating <= 2) AS dsat_count
             FROM public.csat_survey_responses c
-            LEFT JOIN monitor.conversation_snapshot s
-                ON s.conversation_id = c.conversation_id AND s.account_id = c.account_id
+            LEFT JOIN public.users u ON u.id = c.assigned_agent_id
             WHERE c.account_id = $2 AND c.created_at >= now() - make_interval(days => $1)
                 AND c.assigned_agent_id IS NOT NULL
             GROUP BY c.assigned_agent_id
@@ -109,16 +108,15 @@ async def csat_by_team(request: Request, days: int = 30, user=Depends(require_ad
         team_names = await get_team_names(conn, account_id)
         rows = await conn.fetch(
             """
-            SELECT s.team_id,
+            SELECT conv.team_id,
                 count(*) AS total,
                 avg(c.rating) AS avg_rating,
                 count(*) FILTER (WHERE c.rating <= 2) AS dsat_count
             FROM public.csat_survey_responses c
-            JOIN monitor.conversation_snapshot s
-                ON s.conversation_id = c.conversation_id AND s.account_id = c.account_id
+            JOIN public.conversations conv ON conv.id = c.conversation_id AND conv.account_id = c.account_id
             WHERE c.account_id = $2 AND c.created_at >= now() - make_interval(days => $1)
-                AND s.team_id IS NOT NULL
-            GROUP BY s.team_id
+                AND conv.team_id IS NOT NULL
+            GROUP BY conv.team_id
             """,
             days, account_id,
         )
@@ -142,15 +140,14 @@ async def csat_by_channel(request: Request, days: int = 30, user=Depends(require
         channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
-            SELECT s.inbox_id,
+            SELECT conv.inbox_id,
                 count(*) AS total,
                 avg(c.rating) AS avg_rating,
                 count(*) FILTER (WHERE c.rating <= 2) AS dsat_count
             FROM public.csat_survey_responses c
-            LEFT JOIN monitor.conversation_snapshot s
-                ON s.conversation_id = c.conversation_id AND s.account_id = c.account_id
+            JOIN public.conversations conv ON conv.id = c.conversation_id AND conv.account_id = c.account_id
             WHERE c.account_id = $2 AND c.created_at >= now() - make_interval(days => $1)
-            GROUP BY s.inbox_id
+            GROUP BY conv.inbox_id
             """,
             days, account_id,
         )
@@ -203,13 +200,17 @@ async def csat_responses(
     where_clause = "WHERE " + " AND ".join(where)
 
     query = f"""
-        SELECT c.id, c.conversation_id, c.rating, c.feedback_message, c.created_at,
-            c.assigned_agent_id, s.assignee_name, s.subject, s.priority, s.inbox_id,
-            s.contact_name, s.company_name,
+        SELECT c.id, c.conversation_id, c.rating, c.feedback_message, c.created_at, c.assigned_agent_id,
+            u.name AS assignee_name,
+            conv.custom_attributes->>'assunto_motivo' AS subject,
+            conv.priority, conv.inbox_id,
+            ct.name AS contact_name,
+            NULLIF(ct.additional_attributes->>'company_name', '') AS company_name,
             count(*) OVER() AS total_count
         FROM public.csat_survey_responses c
-        LEFT JOIN monitor.conversation_snapshot s
-            ON s.conversation_id = c.conversation_id AND s.account_id = c.account_id
+        LEFT JOIN public.users u ON u.id = c.assigned_agent_id
+        LEFT JOIN public.conversations conv ON conv.id = c.conversation_id AND conv.account_id = c.account_id
+        LEFT JOIN public.contacts ct ON ct.id = c.contact_id
         {where_clause}
         ORDER BY c.created_at DESC
         LIMIT {page_size} OFFSET {offset}
