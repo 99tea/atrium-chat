@@ -13,6 +13,7 @@ from monitor_me import router as me_router
 from monitor_clients import router as clients_router
 from monitor_settings import router as settings_router
 from monitor_bugs import router as bugs_router
+from monitor_csat import router as csat_router
 import auth
 
 app = FastAPI()
@@ -27,6 +28,7 @@ app.include_router(me_router)
 app.include_router(clients_router)
 app.include_router(settings_router)
 app.include_router(bugs_router)
+app.include_router(csat_router)
 app.include_router(auth.router)
 app.mount("/monitor-ui", StaticFiles(directory="static", html=True), name="monitor-ui")
 

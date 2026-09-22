@@ -191,6 +191,7 @@ const NAV_CONFIG = [
     { route: 'today', label: 'Visão Hoje', icon: 'bi-calendar2-day', activeIcon: 'bi-calendar2-day-fill', adminOnly: true },
     { route: 'overview', label: 'Volume', icon: 'bi-grid-1x2', activeIcon: 'bi-grid-1x2-fill', adminOnly: true },
     { route: 'sla', label: 'SLA', icon: 'bi-shield-check', activeIcon: 'bi-shield-fill-check', adminOnly: true },
+    { route: 'csat', label: 'CSAT', icon: 'bi-emoji-smile', activeIcon: 'bi-emoji-smile-fill', adminOnly: true },
   ]},
   { section: 'Operacional', items: [
     { route: 'agents', label: 'Agentes', icon: 'bi-people', activeIcon: 'bi-people-fill', adminOnly: true },

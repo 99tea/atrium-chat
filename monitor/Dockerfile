@@ -13,6 +13,7 @@ COPY monitor_clients.py .
 COPY monitor_home.py .
 COPY monitor_sla.py .
 COPY monitor_bugs.py .
+COPY monitor_csat.py .
 COPY monitor_settings.py .
 COPY auth.py .
 COPY static ./static
