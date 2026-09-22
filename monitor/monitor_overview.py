@@ -13,9 +13,9 @@ async def overview(request: Request, days: int = 30, user=Depends(require_admin)
         row = await conn.fetchrow(
             """
             SELECT
-                count(DISTINCT e.conversation_id) FILTER (WHERE e.event_type = 'created') AS total_open,
-                count(*) FILTER (WHERE e.event_type = 'status_changed' AND e.to_value = 'resolved') AS total_resolved,
-                count(*) FILTER (
+                count(DISTINCT e.conversation_id) FILTER (WHERE e.event_type = 'created' AND NOT cs.excluded_from_metrics) AS total_open,
+                count(DISTINCT e.conversation_id) FILTER (WHERE e.event_type = 'status_changed' AND e.to_value = 'resolved' AND NOT cs.excluded_from_metrics) AS total_resolved,
+                count(DISTINCT e.conversation_id) FILTER (
                     WHERE e.event_type = 'status_changed' AND e.to_value = 'resolved' AND cs.excluded_from_metrics
                 ) AS total_cancelled
             FROM monitor.conversation_events e
@@ -35,13 +35,14 @@ async def overview_daily(request: Request, days: int = 30, user=Depends(require_
         channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
-            SELECT date_trunc('day', occurred_at AT TIME ZONE 'America/Sao_Paulo') AS day,
-                inbox_id,
-                count(*) FILTER (WHERE event_type = 'created') AS created,
-                count(*) FILTER (WHERE event_type = 'status_changed' AND to_value = 'resolved') AS resolved
-            FROM monitor.conversation_events
-            WHERE account_id = $2 AND occurred_at >= now() - make_interval(days => $1)
-            GROUP BY day, inbox_id ORDER BY day
+            SELECT date_trunc('day', e.occurred_at AT TIME ZONE 'America/Sao_Paulo') AS day,
+                e.inbox_id,
+                count(DISTINCT e.conversation_id) FILTER (WHERE e.event_type = 'created' AND NOT cs.excluded_from_metrics) AS created,
+                count(DISTINCT e.conversation_id) FILTER (WHERE e.event_type = 'status_changed' AND e.to_value = 'resolved' AND NOT cs.excluded_from_metrics) AS resolved
+            FROM monitor.conversation_events e
+            JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
+            WHERE e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
+            GROUP BY day, e.inbox_id ORDER BY day
             """,
             days, account_id,
         )
@@ -66,10 +67,12 @@ async def overview_hourly(request: Request, days: int = 30, user=Depends(require
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT EXTRACT(hour FROM occurred_at AT TIME ZONE 'America/Sao_Paulo')::int AS hour,
-                count(*) AS total
-            FROM monitor.conversation_events
-            WHERE event_type = 'created' AND account_id = $2 AND occurred_at >= now() - make_interval(days => $1)
+            SELECT EXTRACT(hour FROM e.occurred_at AT TIME ZONE 'America/Sao_Paulo')::int AS hour,
+                count(DISTINCT e.conversation_id) AS total
+            FROM monitor.conversation_events e
+            JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
+            WHERE e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
+              AND NOT cs.excluded_from_metrics
             GROUP BY hour ORDER BY hour
             """,
             days, account_id,
@@ -84,10 +87,12 @@ async def overview_weekday(request: Request, days: int = 30, user=Depends(requir
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT EXTRACT(dow FROM occurred_at AT TIME ZONE 'America/Sao_Paulo')::int AS weekday,
-                count(*) AS total
-            FROM monitor.conversation_events
-            WHERE event_type = 'created' AND account_id = $2 AND occurred_at >= now() - make_interval(days => $1)
+            SELECT EXTRACT(dow FROM e.occurred_at AT TIME ZONE 'America/Sao_Paulo')::int AS weekday,
+                count(DISTINCT e.conversation_id) AS total
+            FROM monitor.conversation_events e
+            JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
+            WHERE e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
+              AND NOT cs.excluded_from_metrics
             GROUP BY weekday ORDER BY weekday
             """,
             days, account_id,
@@ -102,10 +107,11 @@ async def overview_priority_distribution(request: Request, days: int = 30, user=
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT COALESCE(cs.priority, 'none') AS priority, count(*) AS total
+            SELECT COALESCE(cs.priority, 'none') AS priority, count(DISTINCT e.conversation_id) AS total
             FROM monitor.conversation_events e
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
             WHERE e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
+              AND NOT cs.excluded_from_metrics
             GROUP BY priority
             """,
             days, account_id,
@@ -121,10 +127,12 @@ async def overview_channel_distribution(request: Request, days: int = 30, user=D
         channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
-            SELECT inbox_id, count(*) AS total
-            FROM monitor.conversation_events
-            WHERE event_type = 'created' AND account_id = $2 AND occurred_at >= now() - make_interval(days => $1)
-            GROUP BY inbox_id
+            SELECT e.inbox_id, count(DISTINCT e.conversation_id) AS total
+            FROM monitor.conversation_events e
+            JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
+            WHERE e.event_type = 'created' AND e.account_id = $2 AND e.occurred_at >= now() - make_interval(days => $1)
+              AND NOT cs.excluded_from_metrics
+            GROUP BY e.inbox_id
             """,
             days, account_id,
         )
@@ -144,12 +152,13 @@ async def overview_company_distribution(request: Request, days: int = 30, user=D
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT cs.company_name, count(*) AS total
+            SELECT cs.company_name, count(DISTINCT e.conversation_id) AS total
             FROM monitor.conversation_events e
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
             WHERE e.event_type = 'created'
               AND e.account_id = $2
               AND e.occurred_at >= now() - make_interval(days => $1)
+              AND NOT cs.excluded_from_metrics
               AND cs.company_name IS NOT NULL AND cs.company_name <> ''
             GROUP BY cs.company_name
             ORDER BY total DESC

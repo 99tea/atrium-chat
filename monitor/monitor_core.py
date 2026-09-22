@@ -125,7 +125,13 @@ CREATE TABLE IF NOT EXISTS monitor.channels (
     PRIMARY KEY (account_id, channel_key)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_created_once
+    ON monitor.conversation_events (conversation_id)
+    WHERE event_type = 'created';
+
 ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS sla_ignore_business_hours BOOLEAN DEFAULT false;
+ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS sla_ignore_business_hours BOOLEAN DEFAULT false;
+ALTER TABLE monitor.conversation_snapshot ADD COLUMN IF NOT EXISTS company_override TEXT;
 """
 
 DEFAULT_LABEL_COLOR = "#9296b8"
@@ -236,6 +242,9 @@ async def handle_conversation_event(data: dict, pool):
     labels = data.get("labels") or []
     demanda_avulsa = custom_attrs.get("demanda_avulsa_cobrana_extra")
     sla_ignore_business_hours = bool(custom_attrs.get("horas_extras"))
+    raw_override = custom_attrs.get("empresa_atendimento")
+    company_override = raw_override.strip() if isinstance(raw_override, str) and raw_override.strip() else None
+    
 
     async with pool.acquire() as conn:
         cancellation_label = await get_cancellation_label(conn, account_id)
@@ -249,7 +258,8 @@ async def handle_conversation_event(data: dict, pool):
         if snap is None:
             await conn.execute(
                 "INSERT INTO monitor.conversation_events (conversation_id, inbox_id, account_id, event_type, to_value, occurred_at) "
-                "VALUES ($1,$2,$3,'created',$4,$5)",
+                "VALUES ($1,$2,$3,'created',$4,$5) "
+                "ON CONFLICT (conversation_id) WHERE event_type = 'created' DO NOTHING",
                 conversation_id, inbox_id, account_id, status, occurred_at,
             )
         else:
@@ -272,26 +282,28 @@ async def handle_conversation_event(data: dict, pool):
                     conversation_id, inbox_id, account_id, str(snap["team_id"]), str(team_id), occurred_at,
                 )
 
-            await conn.execute(
-                """
-                INSERT INTO monitor.conversation_snapshot
-                    (conversation_id, inbox_id, account_id, status, assignee_id, assignee_name, team_id,
-                     company_name, contact_id, contact_name, priority, subject, labels, updated_at,
-                     cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
-                     excluded_from_metrics, sla_ignore_business_hours)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
-                ON CONFLICT (conversation_id) DO UPDATE SET
-                    inbox_id = $2, account_id = $3, status = $4, assignee_id = $5, assignee_name = $6, team_id = $7,
-                    company_name = $8, contact_id = $9, contact_name = $10, priority = $11,
-                    subject = $12, labels = $13, updated_at = $14,
-                    cd_cliente = $15, razao_social = $16, regime_tributario = $17, status_contrato = $18,
-                    demanda_avulsa = $19, excluded_from_metrics = $20, sla_ignore_business_hours = $21
-                """,
-                conversation_id, inbox_id, account_id, status, assignee_id, assignee_name, team_id,
-                company_name, contact_id, contact_name, priority, subject, labels, occurred_at,
-                cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
-                excluded_from_metrics, sla_ignore_business_hours,
-           )
+        # upsert do snapshot roda SEMPRE, criado ou não
+        await conn.execute(
+            """
+            INSERT INTO monitor.conversation_snapshot
+                (conversation_id, inbox_id, account_id, status, assignee_id, assignee_name, team_id,
+                 company_name, contact_id, contact_name, priority, subject, labels, updated_at,
+                 cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
+                 excluded_from_metrics, sla_ignore_business_hours, company_override)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+            ON CONFLICT (conversation_id) DO UPDATE SET
+                inbox_id = $2, account_id = $3, status = $4, assignee_id = $5, assignee_name = $6, team_id = $7,
+                company_name = $8, contact_id = $9, contact_name = $10, priority = $11,
+                subject = $12, labels = $13, updated_at = $14,
+                cd_cliente = $15, razao_social = $16, regime_tributario = $17, status_contrato = $18,
+                demanda_avulsa = $19, excluded_from_metrics = $20, sla_ignore_business_hours = $21,
+                company_override = $22
+            """,
+            conversation_id, inbox_id, account_id, status, assignee_id, assignee_name, team_id,
+            company_name, contact_id, contact_name, priority, subject, labels, occurred_at,
+            cd_cliente, razao_social, regime_tributario, status_contrato, demanda_avulsa,
+            excluded_from_metrics, sla_ignore_business_hours, company_override,
+        )
 
 
 async def handle_message_event(data: dict, pool):

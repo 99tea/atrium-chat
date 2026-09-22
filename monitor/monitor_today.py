@@ -12,14 +12,15 @@ async def today_hourly(request: Request, user=Depends(require_admin), account_id
         channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
             """
-            SELECT date_trunc('hour', occurred_at AT TIME ZONE 'America/Sao_Paulo') AS hour,
-                inbox_id,
-                count(*) FILTER (WHERE event_type = 'created') AS created,
-                count(*) FILTER (WHERE event_type = 'status_changed' AND to_value = 'resolved') AS resolved
-            FROM monitor.conversation_events
-            WHERE account_id = $1
-              AND occurred_at >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
-            GROUP BY hour, inbox_id ORDER BY hour
+            SELECT date_trunc('hour', e.occurred_at AT TIME ZONE 'America/Sao_Paulo') AS hour,
+                e.inbox_id,
+                count(DISTINCT e.conversation_id) FILTER (WHERE e.event_type = 'created' AND NOT cs.excluded_from_metrics) AS created,
+                count(DISTINCT e.conversation_id) FILTER (WHERE e.event_type = 'status_changed' AND e.to_value = 'resolved' AND NOT cs.excluded_from_metrics) AS resolved
+            FROM monitor.conversation_events e
+            JOIN monitor.conversation_snapshot cs ON cs.conversation_id = e.conversation_id
+            WHERE e.account_id = $1
+              AND e.occurred_at >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+            GROUP BY hour, e.inbox_id ORDER BY hour
             """,
             account_id,
         )
@@ -95,6 +96,7 @@ async def today_kpi(kpi: str, request: Request, user=Depends(require_admin), acc
             WHERE e.event_type = 'created'
               AND e.account_id = $1
               AND e.occurred_at >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+              AND NOT s.excluded_from_metrics
             ORDER BY e.occurred_at DESC
         """,
         "open": """
@@ -265,13 +267,14 @@ async def today_assignees(request: Request, user=Depends(require_admin), account
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT s.assignee_name, count(*) AS total
+            SELECT s.assignee_name, count(DISTINCT e.conversation_id) AS total
             FROM monitor.conversation_events e
             JOIN monitor.conversation_snapshot s ON s.conversation_id = e.conversation_id
             WHERE e.event_type = 'created'
               AND e.account_id = $1
               AND e.occurred_at >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
               AND s.assignee_name IS NOT NULL
+              AND NOT s.excluded_from_metrics
             GROUP BY s.assignee_name
             ORDER BY total DESC
             """,

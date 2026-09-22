@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, Depends
 from auth import require_admin, get_account_id
 from monitor_core import _validate_days_extended, get_channels, resolve_channel, get_team_names
+from monitor_clients import _client_key_case, NAME_VARIANT_SQL, _pick_name_by_frequency
 
 router = APIRouter()
 
@@ -148,22 +149,40 @@ async def sla_by_client(request: Request, days: int = 30, user=Depends(require_a
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """
-            SELECT COALESCE(cs.cd_cliente, 'sem-codigo-' || cs.contact_id) AS client_key,
-                COALESCE(cs.razao_social, cs.company_name, cs.contact_name, 'Cliente não identificado') AS client_name,
-                count(*) AS total,
-                avg(v.resolution_minutes) AS avg_resolution,
-                sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
+            f"""
+            SELECT {_client_key_case()} AS client_key,
+                {NAME_VARIANT_SQL} AS client_name_variant,
+                v.last_resolved_at AS created_at,
+                v.resolution_minutes, v.target_resolution_minutes
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = v.conversation_id
             WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1) AND cs.contact_id IS NOT NULL
-            GROUP BY client_key, client_name
-            HAVING count(*) >= 3
             """,
             days, account_id,
         )
 
-    clients = [dict(r) for r in rows]
+    grouped = {}
+    for r in rows:
+        g = grouped.setdefault(r["client_key"], {"client_key": r["client_key"], "name_rows": [], "total": 0, "breach": 0, "res_sum": 0})
+        g["name_rows"].append({"client_name_variant": r["client_name_variant"], "created_at": r["created_at"]})
+        g["total"] += 1
+        if r["resolution_minutes"] is not None:
+            g["res_sum"] += r["resolution_minutes"]
+            if r["target_resolution_minutes"] is not None and r["resolution_minutes"] > r["target_resolution_minutes"]:
+                g["breach"] += 1
+
+    clients = []
+    for g in grouped.values():
+        if g["total"] < 3:
+            continue
+        clients.append({
+            "client_key": g["client_key"],
+            "client_name": _pick_name_by_frequency(g["name_rows"]),
+            "total": g["total"],
+            "avg_resolution": g["res_sum"] / g["total"] if g["total"] else None,
+            "resolution_breach_rate": g["breach"] / g["total"] if g["total"] else None,
+        })
+
     best = sorted(clients, key=lambda c: (c["resolution_breach_rate"] is None, c["resolution_breach_rate"]))[:10]
     worst = sorted(clients, key=lambda c: (c["resolution_breach_rate"] is None, -(c["resolution_breach_rate"] or 0)))[:10]
     return {"best": best, "worst": worst}

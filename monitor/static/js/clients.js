@@ -62,6 +62,37 @@ function buildProgressTableHTML(data, labelFn, valFn, formatFn = null) {
   }).join('');
 }
 
+function renderInconsistencyBlock(inconsistencias) {
+  if (!inconsistencias) return '';
+  const sections = [];
+  if (inconsistencias.regime_tributario?.length) {
+    sections.push(`
+      <div class="mb-2">
+        <span class="text-[0.7rem] font-bold text-accent-yellow uppercase tracking-wider">Regime Tributário divergente:</span>
+        <ul class="mt-1 pl-4 list-disc text-[0.75rem] text-text">
+          ${inconsistencias.regime_tributario.map(i => `<li>${i.contact_name || 'Contato #' + i.contact_id}: <strong>${i.valor}</strong></li>`).join('')}
+        </ul>
+      </div>`);
+  }
+  if (inconsistencias.status_contrato?.length) {
+    sections.push(`
+      <div class="mb-2">
+        <span class="text-[0.7rem] font-bold text-accent-yellow uppercase tracking-wider">Status do Contrato divergente:</span>
+        <ul class="mt-1 pl-4 list-disc text-[0.75rem] text-text">
+          ${inconsistencias.status_contrato.map(i => `<li>${i.contact_name || 'Contato #' + i.contact_id}: <strong>${i.valor}</strong></li>`).join('')}
+        </ul>
+      </div>`);
+  }
+  if (!sections.length) return '';
+  return `
+    <div class="bg-accent-yellow/10 border border-accent-yellow/30 rounded-lg p-3 mb-4">
+      <div class="flex items-center gap-1.5 mb-2 text-accent-yellow font-semibold text-[0.8rem]">
+        <i class="bi bi-exclamation-triangle-fill"></i> Cadastro inconsistente — corrija no Chatwoot
+      </div>
+      ${sections.join('')}
+    </div>`;
+}
+
 async function openClientDetailModal(clientKey, days) {
   const detail = await fetch(`/monitor/api/clients/${encodeURIComponent(clientKey)}/detail?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({}));
   const settings = window.__monitorSettings || {};
@@ -71,8 +102,11 @@ async function openClientDetailModal(clientKey, days) {
   document.getElementById('client-detail-title').innerHTML = `<i class="bi bi-building text-accent-green mr-2 glow-text"></i>${detail.client_name || 'Detalhes do Cliente'}`;
   document.getElementById('client-detail-meta').innerHTML = 
     `<span class="inline-flex items-center gap-1.5 bg-bg px-2.5 py-1 rounded-md border border-border text-text text-[0.75rem]"><i class="bi bi-info-circle text-muted"></i> ${detail.regime_tributario || 'Regime não informado'}</span>
-     <span class="inline-flex items-center gap-1.5 bg-bg px-2.5 py-1 rounded-md border border-border text-text text-[0.75rem]"><i class="bi bi-check-circle text-muted"></i> ${detail.status_contrato || 'Status não informado'}</span>`;
-  
+     <span class="inline-flex items-center gap-1.5 bg-bg px-2.5 py-1 rounded-md border border-border text-text text-[0.75rem]"><i class="bi bi-check-circle text-muted"></i> ${detail.status_contrato || 'Status não informado'}</span>
+     ${detail.cadastro_inconsistente ? `<span class="inline-flex items-center gap-1.5 bg-accent-yellow/10 px-2.5 py-1 rounded-md border border-accent-yellow/30 text-accent-yellow text-[0.75rem] font-semibold"><i class="bi bi-exclamation-triangle-fill"></i> Cadastro inconsistente</span>` : ''}`;
+
+  document.getElementById('client-detail-inconsistency').innerHTML = renderInconsistencyBlock(detail.inconsistencias);
+
   document.getElementById('client-detail-total').textContent = detail.total || 0;
 
   document.querySelector('#client-detail-subject-table tbody').innerHTML = (detail.by_subject || []).length
@@ -173,7 +207,9 @@ async function renderClientsData(days) {
   document.querySelector('#table-clients-volume tbody').innerHTML = topVolume.length
     ? topVolume.map(c => `
       <tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors group">
-        <td class="px-3 py-2 font-medium truncate text-[0.75rem] text-text cursor-pointer hover:text-accent transition-colors max-w-[150px]" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})" title="${c.client_name}">${c.client_name}</td>
+        <td class="px-3 py-2 font-medium truncate text-[0.75rem] text-text cursor-pointer hover:text-accent transition-colors max-w-[150px]" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})" title="${c.client_name}">
+          ${c.cadastro_inconsistente ? '<i class="bi bi-exclamation-triangle-fill text-accent-yellow mr-1" title="Cadastro inconsistente entre contatos — veja detalhes ao abrir"></i>' : ''}${c.client_name}
+        </td>
         <td class="px-3 py-2 text-right"><span class="inline-flex items-center px-1.5 py-0.5 text-[0.7rem] font-semibold rounded-md bg-border/30 text-muted border border-border">${c.total}</span></td>
         <td class="px-3 py-2 text-right w-10">
           <button class="w-6 h-6 flex items-center justify-center rounded bg-transparent text-muted hover:bg-panel-light hover:text-text border border-transparent transition-colors" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})">
@@ -465,6 +501,8 @@ Screens.clients = {
         </div>
         
         <div class="p-6 overflow-y-auto max-h-[75vh] no-scrollbar">
+          <div id="client-detail-inconsistency"></div>
+
           <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
             
             <div class="lg:col-span-3 flex flex-col gap-6">

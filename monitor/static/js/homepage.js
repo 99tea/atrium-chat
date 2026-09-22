@@ -1,6 +1,5 @@
 const HOME_CHANNEL_PALETTE = ['#a78bfa', '#fb923c', '#38bdf8', '#f472b6', '#4ade80', '#facc15'];
 let HOME_CHANNEL_INFO = {};
-let homeCalendarDate = new Date();
 let homeClockInterval = null;
 
 async function loadHomeChannelInfo() {
@@ -16,51 +15,6 @@ async function loadHomeChannelInfo() {
     }
   });
   HOME_CHANNEL_INFO.other = { label: 'Outros', color: '#9296b8' };
-}
-
-const HOME_WEEKDAY_SHORT = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
-const HOME_MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-function getMarkedDates() { return JSON.parse(localStorage.getItem('monitor_marked_dates') || '[]'); }
-function saveMarkedDates(dates) { localStorage.setItem('monitor_marked_dates', JSON.stringify(dates)); }
-
-window.toggleMarkedDate = function(y, m, d) {
-  const dateStr = `${y}-${String(m+1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  let dates = getMarkedDates();
-  if (dates.includes(dateStr)) dates = dates.filter(x => x !== dateStr);
-  else dates.push(dateStr);
-  saveMarkedDates(dates);
-  renderHomeCalendar();
-  renderMarkedDatesList();
-}
-
-window.renderMarkedDatesList = function() {
-  const dates = getMarkedDates().sort();
-  const container = document.getElementById('home-marked-dates-list');
-  if(!container) return;
-
-  if(dates.length === 0) {
-    container.innerHTML = '<div class="p-4 text-center flex flex-col items-center"><i class="bi bi-calendar-event text-2xl text-border mb-2"></i><span class="text-xs text-muted">Nenhum dia marcado</span></div>';
-    return;
-  }
-
-  container.innerHTML = dates.map(ds => {
-    const [y, m, d] = ds.split('-');
-    const dateObj = new Date(y, m-1, d);
-    const formatted = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-    const isPast = dateObj < new Date(new Date().setHours(0,0,0,0));
-    
-    return `
-      <div class="flex justify-between items-center px-3 py-2 bg-panel-light border border-border rounded-lg mb-2 transition-all hover:-translate-y-0.5 hover:shadow-md ${isPast ? 'opacity-60' : 'opacity-100'}">
-        <div class="flex items-center gap-2">
-          <i class="bi bi-bookmark-star-fill text-accent-yellow text-sm"></i>
-          <span class="font-semibold text-xs text-text">${formatted}</span>
-        </div>
-        <button class="p-1 cursor-pointer bg-transparent border-none text-muted hover:text-accent-red transition-colors" onclick="toggleMarkedDate(${y}, ${m-1}, ${d})">
-          <i class="bi bi-x-lg text-[0.75rem]"></i>
-        </button>
-      </div>`;
-  }).join('');
 }
 
 function homeInitials(name) {
@@ -87,42 +41,6 @@ function renderHomeClock() {
   dateEl.textContent = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
 }
 
-function renderHomeCalendar() {
-  const year = homeCalendarDate.getFullYear();
-  const month = homeCalendarDate.getMonth();
-  const today = new Date();
-  const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
-  const markedDates = getMarkedDates();
-
-  document.getElementById('home-cal-title').textContent = `${HOME_MONTH_NAMES[month]} ${year}`;
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  let cells = '';
-  for (let i = 0; i < firstDay; i++) cells += `<div></div>`;
-  
-  for (let d = 1; d <= daysInMonth; d++) {
-    const isToday = isCurrentMonth && d === today.getDate();
-    const dateStr = `${year}-${String(month+1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const isMarked = markedDates.includes(dateStr);
-
-    let baseClasses = "aspect-square rounded-md flex items-center justify-center text-[0.8rem] cursor-pointer relative transition-all select-none ";
-    if (isToday) baseClasses += "bg-accent text-white font-bold glow-border hover:scale-105";
-    else if (isMarked) baseClasses += "bg-accent-yellow/10 border border-accent-yellow text-text hover:bg-panel-light hover:scale-105";
-    else baseClasses += "bg-bg border border-transparent text-text hover:border-border hover:scale-105";
-
-    let dot = isMarked ? `<span class="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${isToday ? 'bg-white' : 'bg-accent-yellow'}"></span>` : '';
-    cells += `<div class="${baseClasses}" onclick="toggleMarkedDate(${year}, ${month}, ${d})">${d}${dot}</div>`;
-  }
-  document.getElementById('home-cal-grid').innerHTML = cells;
-}
-
-function setupHomeCalendarNav() {
-  document.getElementById('home-cal-prev').onclick = () => { homeCalendarDate = new Date(homeCalendarDate.getFullYear(), homeCalendarDate.getMonth() - 1, 1); renderHomeCalendar(); };
-  document.getElementById('home-cal-next').onclick = () => { homeCalendarDate = new Date(homeCalendarDate.getFullYear(), homeCalendarDate.getMonth() + 1, 1); renderHomeCalendar(); };
-  document.getElementById('home-cal-today-btn').onclick = () => { homeCalendarDate = new Date(); renderHomeCalendar(); };
-}
-
 function homeTaskItem(t) {
   return `
     <div class="group flex items-start gap-3 bg-bg p-3 rounded-lg border border-border transition-all mb-2 cursor-grab hover:border-muted ${t.done ? 'opacity-50' : ''}" data-task-id="${t.id}" draggable="true">
@@ -135,7 +53,7 @@ function homeTaskItem(t) {
 async function loadHomeTasks() {
   const tasks = await fetch('/monitor/api/home/tasks').then(r => r.ok ? r.json() : []).catch(() => []);
   const list = document.getElementById('home-tasks-list');
-  list.innerHTML = tasks.length ? tasks.map(homeTaskItem).join('') : '<div class="p-6 text-center"><i class="bi bi-check2-circle text-3xl text-accent-green mb-2"></i><span class="block text-sm text-muted">Tudo limpo!</span></div>';
+  list.innerHTML = tasks.length ? tasks.map(homeTaskItem).join('') : '<div class="p-6 text-center flex flex-col items-center"><i class="bi bi-check2-circle text-4xl text-accent-green mb-3"></i><span class="block text-sm text-muted">Tudo limpo!</span></div>';
 
   list.querySelectorAll('.group[draggable]').forEach(item => {
     item.querySelector('.home-task-check').addEventListener('change', async (e) => {
@@ -192,7 +110,7 @@ async function loadHomeStats() {
 
 Screens.home = {
   template: `
-    <div class="flex flex-col gap-6 w-full max-w-[1400px] mx-auto no-scrollbar">
+    <div class="flex flex-col gap-6 w-full max-w-[1400px] mx-auto no-scrollbar pb-8">
       
       <!-- Top Row: Welcome & Quick KPIs -->
       <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -236,7 +154,8 @@ Screens.home = {
       </div>
 
       <!-- Main Row: Chart & Tasks -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- ADICIONADO: items-start para evitar que as colunas estiquem uma a outra -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
         <!-- Chart Panel -->
         <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col lg:col-span-2">
@@ -244,8 +163,8 @@ Screens.home = {
             <h3 class="m-0 text-sm font-semibold flex items-center gap-2 text-text"><i class="bi bi-bar-chart-fill text-accent"></i> Fluxo de Atendimento (Hora)</h3>
             <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
           </div>
-          <div class="panel-content p-5 w-full">
-            <div class="relative w-full h-[280px]">
+          <div class="panel-content p-5 w-full flex-1">
+            <div class="relative w-full h-[350px]">
               <canvas id="home-chart-hourly"></canvas>
             </div>
           </div>
@@ -258,7 +177,8 @@ Screens.home = {
             <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
           </div>
           <div class="panel-content flex flex-col flex-1 p-0">
-            <div id="home-tasks-list" class="p-4 flex flex-col gap-1 overflow-y-auto max-h-[220px] no-scrollbar"></div>
+            <!-- max-h-[400px] para permitir crescimento orgânico até gerar scroll -->
+            <div id="home-tasks-list" class="p-4 flex flex-col gap-1 overflow-y-auto max-h-[400px] flex-1 no-scrollbar"></div>
             <div class="p-4 border-t border-border bg-panel-light/30 mt-auto flex gap-2">
               <input id="home-task-input" type="text" placeholder="Adicionar tarefa..." class="flex-1 px-3 py-2 rounded-lg border border-border bg-bg text-text text-xs focus:outline-none focus:border-accent">
               <button onclick="addHomeTask()" class="bg-accent hover:bg-accent-hover text-white px-3 py-2 rounded-lg transition-colors"><i class="bi bi-plus-lg"></i></button>
@@ -266,37 +186,6 @@ Screens.home = {
           </div>
         </div>
 
-      </div>
-
-      <!-- Bottom Row: Calendar Panel -->
-      <div class="panel-card bg-panel border border-border rounded-xl shadow-sm flex flex-col">
-        <div class="px-5 py-4 border-b border-border flex justify-between items-center cursor-pointer select-none" onclick="togglePanel(this)">
-          <h3 class="m-0 text-sm font-semibold flex items-center gap-2 text-text"><i class="bi bi-calendar3 text-accent-blue"></i> Calendário & Agenda</h3>
-          <button class="text-muted hover:text-text bg-transparent border-none p-1"><i class="bi bi-chevron-up toggle-icon transition-transform"></i></button>
-        </div>
-        <div class="panel-content p-5">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-            
-            <div class="max-w-[320px] mx-auto md:mx-0 w-full">
-              <div class="flex justify-between items-center mb-4">
-                <button id="home-cal-prev" class="p-1 text-muted hover:text-text transition-colors"><i class="bi bi-chevron-left"></i></button>
-                <span id="home-cal-title" class="font-semibold text-sm"></span>
-                <button id="home-cal-next" class="p-1 text-muted hover:text-text transition-colors"><i class="bi bi-chevron-right"></i></button>
-              </div>
-              <div class="grid grid-cols-7 text-center text-xs font-bold text-muted mb-2">
-                ${HOME_WEEKDAY_SHORT.map(w => `<div>${w}</div>`).join('')}
-              </div>
-              <div id="home-cal-grid" class="grid grid-cols-7 gap-1.5 mb-4"></div>
-              <button id="home-cal-today-btn" class="w-full py-2 bg-panel-light border border-border rounded-lg text-xs font-medium hover:border-accent transition-colors">Voltar para Hoje</button>
-            </div>
-
-            <div class="flex flex-col border-t md:border-t-0 md:border-l border-border pt-5 md:pt-0 md:pl-8 h-full">
-              <span class="block text-[0.75rem] text-muted font-bold uppercase tracking-wider mb-4">Datas Marcadas</span>
-              <div id="home-marked-dates-list" class="flex-1 overflow-y-auto max-h-[250px] no-scrollbar"></div>
-            </div>
-
-          </div>
-        </div>
       </div>
 
     </div>
@@ -308,11 +197,6 @@ Screens.home = {
     
     renderHomeClock();
     homeClockInterval = setInterval(renderHomeClock, 1000);
-    homeCalendarDate = new Date();
-    
-    renderHomeCalendar();
-    setupHomeCalendarNav();
-    renderMarkedDatesList();
 
     document.getElementById('home-task-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addHomeTask(); });
 
