@@ -1,5 +1,3 @@
-const CLIENT_DAYS_OPTIONS = [7, 14, 30, 90, 180];
-
 let CLIENT_CHANNEL_INFO = {};
 
 async function loadClientChannelInfo() {
@@ -93,8 +91,9 @@ function renderInconsistencyBlock(inconsistencias) {
     </div>`;
 }
 
-async function openClientDetailModal(clientKey, days) {
-  const detail = await fetch(`/monitor/api/clients/${encodeURIComponent(clientKey)}/detail?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+async function openClientDetailModal(clientKey, range) {
+  const qs = `start_date=${range.startDate}&end_date=${range.endDate}`;
+  const detail = await fetch(`/monitor/api/clients/${encodeURIComponent(clientKey)}/detail?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({}));
   const settings = window.__monitorSettings || {};
   const chatwootBase = settings.chatwoot_base_url || '';
   const accountId = currentUser.account_id;
@@ -169,16 +168,19 @@ function closeClientDetailModal() {
   document.getElementById('client-detail-modal').classList.add('hidden');
 }
 
-async function renderClientsData(days) {
+async function renderClientsData(range) {
+  window.__clientsCurrentRange = range;
+  const qs = `start_date=${range.startDate}&end_date=${range.endDate}`;
+
   const [clients, subjects, newVsReturning, settings, deptTime, demandaAvulsa, byRegime, byStatusContrato] = await Promise.all([
-    fetch(`/monitor/api/clients/summary?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/subjects/summary?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/clients/new-vs-returning?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/clients/summary?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/subjects/summary?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/clients/new-vs-returning?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
     fetch('/monitor/api/settings').then(r => r.ok ? r.json() : {}).catch(() => ({})),
-    fetch(`/monitor/api/departments/client-time?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/clients/demanda-avulsa?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/clients/by-regime?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/clients/by-status-contrato?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/departments/client-time?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/clients/demanda-avulsa?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/clients/by-regime?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/clients/by-status-contrato?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
   ]);
 
   window.__monitorSettings = settings;
@@ -207,12 +209,12 @@ async function renderClientsData(days) {
   document.querySelector('#table-clients-volume tbody').innerHTML = topVolume.length
     ? topVolume.map(c => `
       <tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors group">
-        <td class="px-3 py-2 font-medium truncate text-[0.75rem] text-text cursor-pointer hover:text-accent transition-colors max-w-[150px]" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})" title="${c.client_name}">
+        <td class="px-3 py-2 font-medium truncate text-[0.75rem] text-text cursor-pointer hover:text-accent transition-colors max-w-[150px]" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', window.__clientsCurrentRange)" title="${c.client_name}">
           ${c.cadastro_inconsistente ? '<i class="bi bi-exclamation-triangle-fill text-accent-yellow mr-1" title="Cadastro inconsistente entre contatos — veja detalhes ao abrir"></i>' : ''}${c.client_name}
         </td>
         <td class="px-3 py-2 text-right"><span class="inline-flex items-center px-1.5 py-0.5 text-[0.7rem] font-semibold rounded-md bg-border/30 text-muted border border-border">${c.total}</span></td>
         <td class="px-3 py-2 text-right w-10">
-          <button class="w-6 h-6 flex items-center justify-center rounded bg-transparent text-muted hover:bg-panel-light hover:text-text border border-transparent transition-colors" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})">
+          <button class="w-6 h-6 flex items-center justify-center rounded bg-transparent text-muted hover:bg-panel-light hover:text-text border border-transparent transition-colors" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', window.__clientsCurrentRange)">
             <i class="bi bi-box-arrow-up-right text-[0.7rem]"></i>
           </button>
         </td>
@@ -223,10 +225,10 @@ async function renderClientsData(days) {
   document.querySelector('#table-clients-time tbody').innerHTML = topTime.length
     ? topTime.map(c => `
       <tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors group">
-        <td class="px-3 py-2 font-medium truncate text-[0.75rem] text-text cursor-pointer hover:text-accent-yellow transition-colors max-w-[150px]" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})" title="${c.client_name}">${c.client_name}</td>
+        <td class="px-3 py-2 font-medium truncate text-[0.75rem] text-text cursor-pointer hover:text-accent-yellow transition-colors max-w-[150px]" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', window.__clientsCurrentRange)" title="${c.client_name}">${c.client_name}</td>
         <td class="px-3 py-2 text-right font-semibold text-[0.75rem] text-accent-yellow">${formatDetailedDuration(c.avg_resolution)}</td>
         <td class="px-3 py-2 text-right w-10">
-          <button class="w-6 h-6 flex items-center justify-center rounded bg-transparent text-muted hover:bg-panel-light hover:text-text border border-transparent transition-colors" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})">
+          <button class="w-6 h-6 flex items-center justify-center rounded bg-transparent text-muted hover:bg-panel-light hover:text-text border border-transparent transition-colors" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', window.__clientsCurrentRange)">
             <i class="bi bi-box-arrow-up-right text-[0.7rem]"></i>
           </button>
         </td>
@@ -237,10 +239,10 @@ async function renderClientsData(days) {
   document.querySelector('#table-clients-breach tbody').innerHTML = topBreach.length
     ? topBreach.map(c => `
       <tr class="border-b border-border/50 last:border-0 hover:bg-panel-light transition-colors group">
-        <td class="px-3 py-2 font-medium truncate text-[0.75rem] text-text cursor-pointer hover:text-accent-red transition-colors max-w-[150px]" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})" title="${c.client_name}">${c.client_name}</td>
+        <td class="px-3 py-2 font-medium truncate text-[0.75rem] text-text cursor-pointer hover:text-accent-red transition-colors max-w-[150px]" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', window.__clientsCurrentRange)" title="${c.client_name}">${c.client_name}</td>
         <td class="px-3 py-2 text-right"><span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-[0.65rem] font-bold rounded-md text-accent-red bg-accent-red/10 border border-accent-red/20"><i class="bi bi-exclamation-circle text-[0.6rem]"></i> ${c.breach_count}x</span></td>
         <td class="px-3 py-2 text-right w-10">
-          <button class="w-6 h-6 flex items-center justify-center rounded bg-transparent text-muted hover:bg-panel-light hover:text-text border border-transparent transition-colors" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', ${days})">
+          <button class="w-6 h-6 flex items-center justify-center rounded bg-transparent text-muted hover:bg-panel-light hover:text-text border border-transparent transition-colors" onclick="openClientDetailModal('${c.client_key.replace(/'/g, "\\'")}', window.__clientsCurrentRange)">
             <i class="bi bi-box-arrow-up-right text-[0.7rem]"></i>
           </button>
         </td>
@@ -289,9 +291,7 @@ Screens.clients = {
             </button>
           </div>
 
-          <div id="clients-date-filters" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
-            ${CLIENT_DAYS_OPTIONS.map(d => `<button id="btn-cli-${d}" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="${d}">${d}D</button>`).join('')}
-          </div>
+          <div id="clients-date-picker"></div>
         </div>
       </div>
 
@@ -607,29 +607,16 @@ Screens.clients = {
       });
     });
 
-    let selectedDays = Number(localStorage.getItem('monitor-filter-days')) || 30;
-
-    const initialBtnId = `btn-cli-${selectedDays}`;
-    if(document.getElementById(initialBtnId)){
-        window.handleDateFilterClick('clients-date-filters', initialBtnId, 'monitor-filter-days');
-    }
-
-    document.querySelectorAll('#clients-date-filters .filter-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        selectedDays = Number(btn.dataset.days);
-        
-        window.handleDateFilterClick('clients-date-filters', btn.id, 'monitor-filter-days');
-        
+    DateRangePicker.mount('#clients-date-picker', {
+      onChange: async (range) => {
         const content = document.getElementById('content');
         content.classList.add('opacity-50', 'pointer-events-none');
-        
-        await renderClientsData(selectedDays); 
-        
+        await renderClientsData(range);
         content.classList.remove('opacity-50', 'pointer-events-none');
-      });
+      },
     });
 
     await loadClientChannelInfo();
-    await renderClientsData(selectedDays); 
+    await renderClientsData(DateRangePicker.getSelectedRange());
   }
 };

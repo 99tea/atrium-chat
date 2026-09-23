@@ -74,14 +74,18 @@ function buildSlaRow(labelHtml, data, targetSla) {
   `;
 }
 
-async function renderSlaData(days) {
+async function renderSlaData(range) {
+  const query = range
+    ? `days=${range.days}&start_date=${range.startDate}&end_date=${range.endDate}`
+    : (window.DateRangePicker ? window.DateRangePicker.getQueryString() : 'days=30');
+
   const [summary, byPriority, byChannel, bySubject, byTeam, byClient, settings] = await Promise.all([
-    fetch(`/monitor/api/sla/summary?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-    fetch(`/monitor/api/sla/by-priority?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/sla/by-channel?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/sla/by-subject?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/sla/by-team?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/sla/by-client?days=${days}`).then(r => r.ok ? r.json() : {best: [], worst: []}).catch(() => ({best: [], worst: []})),
+    fetch(`/monitor/api/sla/summary?${query}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/sla/by-priority?${query}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/sla/by-channel?${query}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/sla/by-subject?${query}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/sla/by-team?${query}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/sla/by-client?${query}`).then(r => r.ok ? r.json() : {best: [], worst: []}).catch(() => ({best: [], worst: []})),
     fetch('/monitor/api/settings').then(r => r.ok ? r.json() : {}).catch(() => ({}))
   ]);
 
@@ -153,9 +157,7 @@ Screens.sla = {
           </div>
         </div>
 
-        <div id="sla-date-filters" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
-          ${SLA_DAYS_OPTIONS.map(d => `<button id="btn-sla-${d}" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="${d}">${d}D</button>`).join('')}
-        </div>
+        <div id="sla-date-picker-container" class="shrink-0"></div>
       </div>
 
       <!-- Quick KPI Cards -->
@@ -316,31 +318,20 @@ Screens.sla = {
     </div>
   `,
   load: async function () {
-    let selectedDays = Number(localStorage.getItem('monitor-sla-filter-days')) || 30;
-
-    // Apply the active state correctly on load using global function
-    const initialBtnId = `btn-sla-${selectedDays}`;
-    if (document.getElementById(initialBtnId)) {
-        window.handleDateFilterClick('sla-date-filters', initialBtnId, 'monitor-sla-filter-days');
+    const container = document.getElementById('sla-date-picker-container');
+    if (container && window.DateRangePicker) {
+      window.DateRangePicker.mount(container, {
+        align: 'right',
+        onChange: async (range) => {
+          const content = document.getElementById('content');
+          if (content) content.classList.add('opacity-50', 'pointer-events-none');
+          await renderSlaData(range);
+          if (content) content.classList.remove('opacity-50', 'pointer-events-none');
+        }
+      });
     }
 
-    document.querySelectorAll('#content .filter-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        selectedDays = Number(btn.dataset.days);
-        
-        // Manage active classes using the global function
-        window.handleDateFilterClick('sla-date-filters', btn.id, 'monitor-sla-filter-days');
-        
-        const content = document.getElementById('content');
-        content.classList.add('opacity-50', 'pointer-events-none');
-        
-        await renderSlaData(selectedDays); 
-        
-        content.classList.remove('opacity-50', 'pointer-events-none');
-      });
-    });
-
     await loadChannelInfo();
-    await renderSlaData(selectedDays); 
+    await renderSlaData(); 
   }
 };

@@ -1,7 +1,6 @@
-const CSAT_DAYS_OPTIONS = [7, 14, 30, 90, 180];
-
 let CSAT_CHANNEL_INFO = {};
-let csatResponsesState = { days: 30, rating: '', assignee_id: '', page: 1, page_size: 20 };
+let csatCurrentRange = null;
+let csatResponsesState = { rating: '', assignee_id: '', page: 1, page_size: 20 };
 
 async function loadCsatChannelInfo() {
   const channels = await (await fetch('/monitor/api/channels')).json();
@@ -56,7 +55,8 @@ function csatBuildRow(labelHtml, data) {
 
 async function renderCsatResponses() {
   const params = new URLSearchParams();
-  params.set('days', csatResponsesState.days);
+  params.set('start_date', csatCurrentRange.startDate);
+  params.set('end_date', csatCurrentRange.endDate);
   params.set('page', csatResponsesState.page);
   params.set('page_size', csatResponsesState.page_size);
   if (csatResponsesState.rating) params.set('rating', csatResponsesState.rating);
@@ -105,16 +105,17 @@ async function renderCsatResponses() {
   document.getElementById('csat-next-page').disabled = data.page >= totalPages;
 }
 
-async function renderCsatData(days) {
-  csatResponsesState.days = days;
+async function renderCsatData(range) {
+  csatCurrentRange = range;
   csatResponsesState.page = 1;
+  const qs = `start_date=${range.startDate}&end_date=${range.endDate}`;
 
   const [summary, timeline, byAgent, byTeam, byChannel] = await Promise.all([
-    fetch(`/monitor/api/csat/summary?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-    fetch(`/monitor/api/csat/timeline?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/csat/by-agent?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/csat/by-team?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/csat/by-channel?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/csat/summary?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/csat/timeline?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/csat/by-agent?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/csat/by-team?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/csat/by-channel?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
   ]);
 
   document.getElementById('csat-total').textContent = summary.total ?? 0;
@@ -203,9 +204,7 @@ Screens.csat = {
           </div>
         </div>
 
-        <div id="csat-date-filters" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
-          ${CSAT_DAYS_OPTIONS.map(d => `<button id="btn-csat-${d}" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="${d}">${d}D</button>`).join('')}
-        </div>
+        <div id="csat-date-picker"></div>
       </div>
 
       <!-- KPI Cards -->
@@ -365,23 +364,13 @@ Screens.csat = {
     </div>
   `,
   load: async function () {
-    let selectedDays = Number(localStorage.getItem('monitor-filter-days')) || 30;
-
-    const initialBtnId = `btn-csat-${selectedDays}`;
-    if (document.getElementById(initialBtnId)) {
-      window.handleDateFilterClick('csat-date-filters', initialBtnId, 'monitor-filter-days');
-    }
-
-    document.querySelectorAll('#csat-date-filters .filter-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        selectedDays = Number(btn.dataset.days);
-        window.handleDateFilterClick('csat-date-filters', btn.id, 'monitor-filter-days');
-
+    DateRangePicker.mount('#csat-date-picker', {
+      onChange: async (range) => {
         const content = document.getElementById('content');
         content.classList.add('opacity-50', 'pointer-events-none');
-        await renderCsatData(selectedDays);
+        await renderCsatData(range);
         content.classList.remove('opacity-50', 'pointer-events-none');
-      });
+      },
     });
 
     document.getElementById('csat-rating-filter').addEventListener('change', (e) => {
@@ -404,6 +393,6 @@ Screens.csat = {
     });
 
     await loadCsatChannelInfo();
-    await renderCsatData(selectedDays);
+    await renderCsatData(DateRangePicker.getSelectedRange());
   },
 };

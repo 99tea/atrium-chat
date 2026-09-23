@@ -1,14 +1,19 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
 from typing import Optional
 from auth import require_admin, get_account_id
-from monitor_core import _validate_days_extended, get_channels, resolve_channel, get_team_names
+from monitor_core import resolve_date_range, get_channels, resolve_channel, get_team_names
 
 router = APIRouter()
 
 
+def _naive_range(days, start_date, end_date):
+    start, end = resolve_date_range(days, start_date, end_date)
+    return start.replace(tzinfo=None), end.replace(tzinfo=None)
+
+
 @router.get("/monitor/api/csat/summary")
-async def csat_summary(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
-    days = _validate_days_extended(days)
+async def csat_summary(request: Request, days: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
+    start, end = _naive_range(days, start_date, end_date)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -18,18 +23,18 @@ async def csat_summary(request: Request, days: int = 30, user=Depends(require_ad
                 count(*) FILTER (WHERE rating <= 2) AS dsat_count,
                 count(*) FILTER (WHERE rating >= 4) AS csat_count
             FROM public.csat_survey_responses
-            WHERE account_id = $2 AND created_at >= now() - make_interval(days => $1)
+            WHERE account_id = $1 AND created_at >= $2 AND created_at <= $3
             """,
-            days, account_id,
+            account_id, start, end,
         )
         dist_rows = await conn.fetch(
             """
             SELECT rating, count(*) AS total
             FROM public.csat_survey_responses
-            WHERE account_id = $2 AND created_at >= now() - make_interval(days => $1)
+            WHERE account_id = $1 AND created_at >= $2 AND created_at <= $3
             GROUP BY rating
             """,
-            days, account_id,
+            account_id, start, end,
         )
 
     total = row["total"] or 0
@@ -49,8 +54,8 @@ async def csat_summary(request: Request, days: int = 30, user=Depends(require_ad
 
 
 @router.get("/monitor/api/csat/timeline")
-async def csat_timeline(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
-    days = _validate_days_extended(days)
+async def csat_timeline(request: Request, days: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
+    start, end = _naive_range(days, start_date, end_date)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -59,17 +64,17 @@ async def csat_timeline(request: Request, days: int = 30, user=Depends(require_a
                 avg(rating) AS avg_rating,
                 count(*) AS total
             FROM public.csat_survey_responses
-            WHERE account_id = $2 AND created_at >= now() - make_interval(days => $1)
+            WHERE account_id = $1 AND created_at >= $2 AND created_at <= $3
             GROUP BY day ORDER BY day
             """,
-            days, account_id,
+            account_id, start, end,
         )
     return [dict(r) for r in rows]
 
 
 @router.get("/monitor/api/csat/by-agent")
-async def csat_by_agent(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
-    days = _validate_days_extended(days)
+async def csat_by_agent(request: Request, days: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
+    start, end = _naive_range(days, start_date, end_date)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -81,12 +86,12 @@ async def csat_by_agent(request: Request, days: int = 30, user=Depends(require_a
                 count(*) FILTER (WHERE c.rating <= 2) AS dsat_count
             FROM public.csat_survey_responses c
             LEFT JOIN public.users u ON u.id = c.assigned_agent_id
-            WHERE c.account_id = $2 AND c.created_at >= now() - make_interval(days => $1)
+            WHERE c.account_id = $1 AND c.created_at >= $2 AND c.created_at <= $3
                 AND c.assigned_agent_id IS NOT NULL
             GROUP BY c.assigned_agent_id
             ORDER BY avg_rating DESC
             """,
-            days, account_id,
+            account_id, start, end,
         )
     return [
         {
@@ -101,8 +106,8 @@ async def csat_by_agent(request: Request, days: int = 30, user=Depends(require_a
 
 
 @router.get("/monitor/api/csat/by-team")
-async def csat_by_team(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
-    days = _validate_days_extended(days)
+async def csat_by_team(request: Request, days: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
+    start, end = _naive_range(days, start_date, end_date)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         team_names = await get_team_names(conn, account_id)
@@ -114,11 +119,11 @@ async def csat_by_team(request: Request, days: int = 30, user=Depends(require_ad
                 count(*) FILTER (WHERE c.rating <= 2) AS dsat_count
             FROM public.csat_survey_responses c
             JOIN public.conversations conv ON conv.id = c.conversation_id AND conv.account_id = c.account_id
-            WHERE c.account_id = $2 AND c.created_at >= now() - make_interval(days => $1)
+            WHERE c.account_id = $1 AND c.created_at >= $2 AND c.created_at <= $3
                 AND conv.team_id IS NOT NULL
             GROUP BY conv.team_id
             """,
-            days, account_id,
+            account_id, start, end,
         )
     return [
         {
@@ -133,8 +138,8 @@ async def csat_by_team(request: Request, days: int = 30, user=Depends(require_ad
 
 
 @router.get("/monitor/api/csat/by-channel")
-async def csat_by_channel(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
-    days = _validate_days_extended(days)
+async def csat_by_channel(request: Request, days: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
+    start, end = _naive_range(days, start_date, end_date)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         channels = await get_channels(conn, account_id)
@@ -146,10 +151,10 @@ async def csat_by_channel(request: Request, days: int = 30, user=Depends(require
                 count(*) FILTER (WHERE c.rating <= 2) AS dsat_count
             FROM public.csat_survey_responses c
             JOIN public.conversations conv ON conv.id = c.conversation_id AND conv.account_id = c.account_id
-            WHERE c.account_id = $2 AND c.created_at >= now() - make_interval(days => $1)
+            WHERE c.account_id = $1 AND c.created_at >= $2 AND c.created_at <= $3
             GROUP BY conv.inbox_id
             """,
-            days, account_id,
+            account_id, start, end,
         )
 
     by_channel = {}
@@ -174,7 +179,9 @@ async def csat_by_channel(request: Request, days: int = 30, user=Depends(require
 @router.get("/monitor/api/csat/responses")
 async def csat_responses(
     request: Request,
-    days: int = 30,
+    days: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     rating: Optional[int] = None,
     assignee_id: Optional[int] = None,
     page: int = 1,
@@ -182,13 +189,13 @@ async def csat_responses(
     user=Depends(require_admin),
     account_id: int = Depends(get_account_id),
 ):
-    days = _validate_days_extended(days)
+    start, end = _naive_range(days, start_date, end_date)
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
     offset = (page - 1) * page_size
 
-    where = ["c.account_id = $1", "c.created_at >= now() - make_interval(days => $2)"]
-    params = [account_id, days]
+    where = ["c.account_id = $1", "c.created_at >= $2", "c.created_at <= $3"]
+    params = [account_id, start, end]
 
     if rating is not None:
         params.append(rating)

@@ -53,18 +53,20 @@ function buildOverviewRow(labelHtml, value, total, barColorClass = 'bg-accent') 
   `;
 }
 
-async function renderOverviewData(days) {
+async function renderOverviewData(range) {
+  const qs = `start_date=${range.startDate}&end_date=${range.endDate}`;
+
   const [kpis, daily, hourly, weekday, reopenRate, newVsReturning, priorityDist, channelDist, companyDist, teamDist] = await Promise.all([
-    fetch(`/monitor/api/overview?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-    fetch(`/monitor/api/overview/daily?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/overview/hourly?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/overview/weekday?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/overview/reopen-rate?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-    fetch(`/monitor/api/clients/new-vs-returning?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-    fetch(`/monitor/api/overview/priority-distribution?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/overview/channel-distribution?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-    fetch(`/monitor/api/overview/company-distribution?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/teams/distribution?days=${days}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/overview?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/overview/daily?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/overview/hourly?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/overview/weekday?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/overview/reopen-rate?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/clients/new-vs-returning?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/overview/priority-distribution?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/overview/channel-distribution?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/overview/company-distribution?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`/monitor/api/teams/distribution?${qs}`).then(r => r.ok ? r.json() : []).catch(() => []),
   ]);
 
   document.getElementById('ov-total-resolved').textContent = kpis.total_resolved ?? 0;
@@ -102,7 +104,6 @@ async function renderOverviewData(days) {
     },
     options: {
       maintainAspectRatio: false,
-      // Interação melhorada para exibir tooltip passando o mouse no eixo Y do dia inteiro
       interaction: { mode: 'index', intersect: false },
       plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10, usePointStyle: true, padding: 10, font: { size: 10 } } } },
       scales: {
@@ -193,7 +194,7 @@ Screens.overview = {
   template: `
     <div class="flex flex-col gap-6 w-full max-w-[1400px] mx-auto no-scrollbar">
 
-      <!-- Header & Date Filters -->
+      <!-- Header & Date Picker -->
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border">
         <div class="flex items-center gap-4">
           <div class="w-14 h-14 rounded-xl flex items-center justify-center text-2xl shrink-0 bg-accent text-white shadow-sm glow-border"><i class="bi bi-grid-1x2"></i></div>
@@ -202,14 +203,8 @@ Screens.overview = {
             <p class="m-0 text-[0.9rem] text-muted">Métricas e acompanhamento do período</p>
           </div>
         </div>
-        
-        <div id="ov-date-filters" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
-          <button id="btn-ov-7" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="7">7D</button>
-          <button id="btn-ov-14" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="14">14D</button>
-          <button id="btn-ov-30" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-accent bg-panel shadow-sm text-text glow-border" data-days="30">30D</button>
-          <button id="btn-ov-90" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="90">90D</button>
-          <button id="btn-ov-180" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="180">180D</button>
-        </div>
+
+        <div id="ov-date-picker"></div>
       </div>
 
       <!-- Quick KPI Cards -->
@@ -381,29 +376,16 @@ Screens.overview = {
     </div>
   `,
   load: async function () {
-    let selectedDays = Number(localStorage.getItem('monitor-filter-days')) || 30;
-
-    const initialBtnId = `btn-ov-${selectedDays}`;
-    if (document.getElementById(initialBtnId)) {
-        window.handleDateFilterClick('ov-date-filters', initialBtnId, 'monitor-filter-days');
-    }
-
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        selectedDays = Number(btn.dataset.days);
-        
-        window.handleDateFilterClick('ov-date-filters', btn.id, 'monitor-filter-days');
-
+    DateRangePicker.mount('#ov-date-picker', {
+      onChange: async (range) => {
         const content = document.getElementById('content');
         content.classList.add('opacity-50', 'pointer-events-none');
-
-        await renderOverviewData(selectedDays);
-
+        await renderOverviewData(range);
         content.classList.remove('opacity-50', 'pointer-events-none');
-      });
+      },
     });
 
     await loadOverviewChannelInfo();
-    await renderOverviewData(selectedDays);
+    await renderOverviewData(DateRangePicker.getSelectedRange());
   }
 };

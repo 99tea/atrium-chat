@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 router = APIRouter()
 
@@ -163,6 +163,20 @@ def _validate_days(days: int) -> int:
 
 def _validate_days_extended(days: int) -> int:
     return days if days in ALLOWED_DAYS_EXTENDED else 30
+
+
+def resolve_date_range(days: int | None, start_date: str | None, end_date: str | None):
+    if start_date and end_date:
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            end = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+            return start, end
+        except ValueError:
+            pass
+    d = _validate_days_extended(days if days is not None else 30)
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=d)
+    return start, end
 
 
 def to_ts(value) -> datetime:
