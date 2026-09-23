@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Request, Depends
 from datetime import datetime, timezone
+from typing import Optional
 from auth import get_current_user, get_account_id
-from monitor_core import _validate_days_extended, get_channels, resolve_channel
+from monitor_core import get_channels, resolve_channel, resolve_date_range
 
 router = APIRouter()
 
@@ -66,8 +67,15 @@ async def me_awaiting(request: Request, user=Depends(get_current_user), account_
 
 
 @router.get("/monitor/api/me/reopened")
-async def me_reopened(request: Request, days: int = 30, user=Depends(get_current_user), account_id: int = Depends(get_account_id)):
-    days = _validate_days_extended(days)
+async def me_reopened(
+    request: Request,
+    days: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user=Depends(get_current_user),
+    account_id: int = Depends(get_account_id),
+):
+    start, end = resolve_date_range(days, start_date, end_date)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -79,9 +87,9 @@ async def me_reopened(request: Request, days: int = 30, user=Depends(get_current
               AND e.from_value = 'resolved'
               AND e.to_value IN ('open', 'pending')
               AND e.account_id = $3
-              AND e.occurred_at >= now() - make_interval(days => $1)
-              AND s.assignee_id = $2
+              AND e.occurred_at >= $1 AND e.occurred_at <= $2
+              AND s.assignee_id = $4
             """,
-            days, user["id"], account_id,
+            start, end, account_id, user["id"],
         )
     return dict(row) if row else {"reopened": 0}

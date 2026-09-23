@@ -1,5 +1,3 @@
-const AGENT_DETAIL_DAYS_OPTIONS = [7, 14, 30, 90, 180];
-
 let AGENT_DETAIL_CHANNEL_INFO = {};
 
 async function loadAgentDetailChannelInfo() {
@@ -81,12 +79,14 @@ function agentDetailCompareValue(agentVal, teamVal) {
           </div>`;
 }
 
-async function renderAgentDetailPage(agentId, days) {
+async function renderAgentDetailPage(agentId, range) {
+  const qs = `start_date=${range.startDate}&end_date=${range.endDate}`;
+
   const [detail, openConvs, awaiting, reopened, settings] = await Promise.all([
-    fetch(`/monitor/api/agents/${agentId}/detail?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/agents/${agentId}/detail?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
     fetch(`/monitor/api/agents/${agentId}/open-conversations`).then(r => r.ok ? r.json() : []).catch(() => []),
     fetch(`/monitor/api/agents/${agentId}/awaiting`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/agents/${agentId}/reopened?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/agents/${agentId}/reopened?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
     fetch('/monitor/api/settings').then(r => r.ok ? r.json() : {}).catch(() => ({})),
   ]);
 
@@ -211,9 +211,7 @@ Screens.agent = {
           </div>
         </div>
 
-        <div id="agent-date-filters" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
-          ${AGENT_DETAIL_DAYS_OPTIONS.map(d => `<button id="btn-ag-${d}" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="${d}">${d}D</button>`).join('')}
-        </div>
+        <div id="agent-date-picker" class="shrink-0"></div>
       </div>
 
       <!-- Linha Superior: Cards e Comparativo -->
@@ -406,29 +404,17 @@ Screens.agent = {
     document.getElementById('agent-page-title').textContent = agentName;
     document.getElementById('agent-page-avatar').textContent = homeInitials(agentName);
 
-    let selectedDays = 30;
+    await loadAgentDetailChannelInfo();
 
-    const initialBtnId = `btn-ag-${selectedDays}`;
-    if (document.getElementById(initialBtnId)) {
-        window.handleDateFilterClick('agent-date-filters', initialBtnId, null);
-    }
-
-    document.querySelectorAll('#agent-date-filters .filter-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        selectedDays = Number(btn.dataset.days);
-        
-        window.handleDateFilterClick('agent-date-filters', btn.id, null);
-        
+    DateRangePicker.mount('#agent-date-picker', {
+      onChange: async (range) => {
         const content = document.getElementById('content');
         content.classList.add('opacity-50', 'pointer-events-none');
-        
-        await renderAgentDetailPage(agentId, selectedDays);
-        
+        await renderAgentDetailPage(agentId, range);
         content.classList.remove('opacity-50', 'pointer-events-none');
-      });
+      },
     });
 
-    await loadAgentDetailChannelInfo();
-    await renderAgentDetailPage(agentId, selectedDays);
+    await renderAgentDetailPage(agentId, DateRangePicker.getSelectedRange());
   },
 };

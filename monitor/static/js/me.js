@@ -1,5 +1,3 @@
-const ME_DAYS_OPTIONS = [7, 14, 30, 90, 180];
-
 let ME_CHANNEL_INFO = {};
 
 async function loadMeChannelInfo() {
@@ -81,12 +79,14 @@ function meCompareValue(agentVal, teamVal) {
           </div>`;
 }
 
-async function renderMeData(days) {
+async function renderMeData(range) {
+  const qs = `start_date=${range.startDate}&end_date=${range.endDate}`;
+
   const [detail, status, awaiting, reopened, settings] = await Promise.all([
-    fetch(`/monitor/api/agents/${currentUser.id}/detail?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/agents/${currentUser.id}/detail?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
     fetch('/monitor/api/status').then(r => r.ok ? r.json() : []).catch(() => []),
     fetch('/monitor/api/me/awaiting').then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`/monitor/api/me/reopened?days=${days}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch(`/monitor/api/me/reopened?${qs}`).then(r => r.ok ? r.json() : {}).catch(() => ({})),
     fetch('/monitor/api/settings').then(r => r.ok ? r.json() : {}).catch(() => ({})),
   ]);
 
@@ -209,9 +209,7 @@ Screens.me = {
           </div>
         </div>
 
-        <div id="me-date-filters" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
-          ${ME_DAYS_OPTIONS.map(d => `<button id="btn-me-${d}" class="filter-btn px-4 py-2 text-[0.8rem] font-semibold rounded-lg transition-colors border border-transparent bg-transparent text-muted hover:bg-panel-light hover:text-text" data-days="${d}">${d}D</button>`).join('')}
-        </div>
+        <div id="me-date-picker" class="shrink-0"></div>
       </div>
 
       <!-- Linha Superior: Cards e Comparativo -->
@@ -391,32 +389,20 @@ Screens.me = {
     </div>
   `,
   load: async function () {
-    let selectedDays = Number(localStorage.getItem('monitor-filter-days')) || 30;
-
     document.getElementById('me-page-title').textContent = currentUser.name || 'Meus Dados';
     document.getElementById('me-page-avatar').textContent = homeInitials(currentUser.name || '?');
 
-    const initialBtnId = `btn-me-${selectedDays}`;
-    if (document.getElementById(initialBtnId)) {
-        window.handleDateFilterClick('me-date-filters', initialBtnId, 'monitor-filter-days');
-    }
+    await loadMeChannelInfo();
 
-    document.querySelectorAll('#me-date-filters .filter-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        selectedDays = Number(btn.dataset.days);
-        
-        window.handleDateFilterClick('me-date-filters', btn.id, 'monitor-filter-days');
-        
+    DateRangePicker.mount('#me-date-picker', {
+      onChange: async (range) => {
         const content = document.getElementById('content');
         content.classList.add('opacity-50', 'pointer-events-none');
-        
-        await renderMeData(selectedDays); 
-        
+        await renderMeData(range);
         content.classList.remove('opacity-50', 'pointer-events-none');
-      });
+      },
     });
 
-    await loadMeChannelInfo();
-    await renderMeData(selectedDays); 
+    await renderMeData(DateRangePicker.getSelectedRange());
   },
 };

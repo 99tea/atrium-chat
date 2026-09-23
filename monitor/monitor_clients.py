@@ -191,9 +191,9 @@ async def client_detail(client_key: str, request: Request, days: Optional[int] =
 
         if client_key.startswith("sem-empresa-"):
             contact_id = client_key.replace("sem-empresa-", "", 1)
-            client_filter = "cs.contact_id::text = $2 AND COALESCE(NULLIF(cs.company_override, ''), cs.company_name) IS NULL"
+            client_filter = "cs.contact_id::text = $1 AND COALESCE(NULLIF(cs.company_override, ''), cs.company_name) IS NULL"
         else:
-            client_filter = f"{NORMALIZE_SQL} = $2"
+            client_filter = f"{NORMALIZE_SQL} = $1"
             contact_id = client_key
 
         rows = await conn.fetch(
@@ -205,26 +205,26 @@ async def client_detail(client_key: str, request: Request, days: Optional[int] =
                 v.resolution_minutes, v.target_resolution_minutes
             FROM monitor.conversation_snapshot cs
             JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                AND e.event_type = 'created' AND e.account_id = $3
+                AND e.event_type = 'created' AND e.account_id = $2
             LEFT JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
-            WHERE cs.account_id = $3 AND {client_filter} AND e.occurred_at >= $4 AND e.occurred_at <= $5
+            WHERE cs.account_id = $2 AND {client_filter} AND e.occurred_at >= $3 AND e.occurred_at <= $4
             ORDER BY e.occurred_at DESC
             """,
-            None, contact_id, account_id, start, end,
+            contact_id, account_id, start, end,
         )
 
         by_team_rows = await conn.fetch(
-                    f"""
-                    SELECT cs.team_id, count(*) AS total, avg(v.resolution_minutes) AS avg_resolution, sum(v.resolution_minutes) AS total_minutes
-                    FROM monitor.conversation_snapshot cs
-                    JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
-                        AND e.event_type = 'created' AND e.account_id = $3
-                    LEFT JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
-                    WHERE cs.account_id = $3 AND {client_filter} AND e.occurred_at >= $4 AND e.occurred_at <= $5
-                    GROUP BY cs.team_id
-                    """,
-                    None, contact_id, account_id, start, end,
-                )
+            f"""
+            SELECT cs.team_id, count(*) AS total, avg(v.resolution_minutes) AS avg_resolution, sum(v.resolution_minutes) AS total_minutes
+            FROM monitor.conversation_snapshot cs
+            JOIN monitor.conversation_events e ON e.conversation_id = cs.conversation_id
+                AND e.event_type = 'created' AND e.account_id = $2
+            LEFT JOIN monitor.v_sla v ON v.conversation_id = cs.conversation_id
+            WHERE cs.account_id = $2 AND {client_filter} AND e.occurred_at >= $3 AND e.occurred_at <= $4
+            GROUP BY cs.team_id
+            """,
+            contact_id, account_id, start, end,
+        )
 
     if not rows:
         return {"client_name": "Cliente não identificado", "total": 0, "conversations": [], "by_subject": [], "by_channel": {}, "cadastro_inconsistente": False, "inconsistencias": {}}
