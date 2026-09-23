@@ -5,6 +5,12 @@ from monitor_clients import _client_key_case, NAME_VARIANT_SQL, _pick_name_by_fr
 
 router = APIRouter()
 
+# Janela de data é aplicada por FILTER em cada métrica, não no WHERE geral,
+# pois 1ª resposta e resolução acontecem em momentos diferentes da conversa.
+# Uma conversa respondida no período mas ainda não resolvida deve contar
+# para avg_first_response mesmo sem entrar em avg_resolution/breach_rate.
+WINDOW_SQL = "make_interval(days => $1)"
+
 
 @router.get("/monitor/api/sla/summary")
 async def sla_summary(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
@@ -12,13 +18,17 @@ async def sla_summary(request: Request, days: int = 30, user=Depends(require_adm
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            """
-            SELECT count(*) AS total,
-                avg(first_response_minutes) AS avg_first_response,
-                avg(resolution_minutes) AS avg_resolution,
-                sum((resolution_minutes > target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
+            f"""
+            SELECT
+                count(*) FILTER (WHERE first_response_at >= now() - {WINDOW_SQL}) AS total_responded,
+                count(*) FILTER (WHERE last_resolved_at >= now() - {WINDOW_SQL}) AS total,
+                avg(first_response_minutes) FILTER (WHERE first_response_at >= now() - {WINDOW_SQL}) AS avg_first_response,
+                avg(resolution_minutes) FILTER (WHERE last_resolved_at >= now() - {WINDOW_SQL}) AS avg_resolution,
+                sum((resolution_minutes > target_resolution_minutes)::int) FILTER (WHERE last_resolved_at >= now() - {WINDOW_SQL})::float
+                    / NULLIF(count(*) FILTER (WHERE last_resolved_at >= now() - {WINDOW_SQL}), 0) AS resolution_breach_rate
             FROM monitor.v_sla
-            WHERE account_id = $2 AND last_resolved_at >= now() - make_interval(days => $1)
+            WHERE account_id = $2
+                AND (first_response_at >= now() - {WINDOW_SQL} OR last_resolved_at >= now() - {WINDOW_SQL})
             """,
             days, account_id,
         )
@@ -31,15 +41,17 @@ async def sla_by_priority(request: Request, days: int = 30, user=Depends(require
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT COALESCE(cs.priority, 'none') AS priority,
-                count(*) AS total,
-                avg(v.first_response_minutes) AS avg_first_response,
-                avg(v.resolution_minutes) AS avg_resolution,
-                sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
+                count(*) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}) AS total,
+                avg(v.first_response_minutes) FILTER (WHERE v.first_response_at >= now() - {WINDOW_SQL}) AS avg_first_response,
+                avg(v.resolution_minutes) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}) AS avg_resolution,
+                sum((v.resolution_minutes > v.target_resolution_minutes)::int) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL})::float
+                    / NULLIF(count(*) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = v.conversation_id
-            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1)
+            WHERE v.account_id = $2
+                AND (v.first_response_at >= now() - {WINDOW_SQL} OR v.last_resolved_at >= now() - {WINDOW_SQL})
             GROUP BY cs.priority
             """,
             days, account_id,
@@ -54,14 +66,17 @@ async def sla_by_channel(request: Request, days: int = 30, user=Depends(require_
     async with pool.acquire() as conn:
         channels = await get_channels(conn, account_id)
         rows = await conn.fetch(
-            """
+            f"""
             SELECT v.inbox_id,
-                count(*) AS total,
-                avg(v.first_response_minutes) AS avg_first_response,
-                avg(v.resolution_minutes) AS avg_resolution,
-                sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
+                count(*) FILTER (WHERE v.first_response_at >= now() - {WINDOW_SQL}) AS total_responded,
+                count(*) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}) AS total,
+                avg(v.first_response_minutes) FILTER (WHERE v.first_response_at >= now() - {WINDOW_SQL}) AS avg_first_response,
+                avg(v.resolution_minutes) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}) AS avg_resolution,
+                sum((v.resolution_minutes > v.target_resolution_minutes)::int) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL})::float
+                    / NULLIF(count(*) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
-            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1)
+            WHERE v.account_id = $2
+                AND (v.first_response_at >= now() - {WINDOW_SQL} OR v.last_resolved_at >= now() - {WINDOW_SQL})
             GROUP BY v.inbox_id
             """,
             days, account_id,
@@ -70,9 +85,13 @@ async def sla_by_channel(request: Request, days: int = 30, user=Depends(require_
     by_channel = {}
     for r in rows:
         channel = resolve_channel(r["inbox_id"], channels)
-        c = by_channel.setdefault(channel, {"channel": channel, "total": 0, "fr_sum": 0, "res_sum": 0, "breach_sum": 0})
+        c = by_channel.setdefault(channel, {
+            "channel": channel, "total": 0, "total_responded": 0,
+            "fr_sum": 0, "res_sum": 0, "breach_sum": 0,
+        })
         c["total"] += r["total"]
-        c["fr_sum"] += (r["avg_first_response"] or 0) * r["total"]
+        c["total_responded"] += r["total_responded"]
+        c["fr_sum"] += (r["avg_first_response"] or 0) * r["total_responded"]
         c["res_sum"] += (r["avg_resolution"] or 0) * r["total"]
         c["breach_sum"] += (r["resolution_breach_rate"] or 0) * r["total"]
 
@@ -80,7 +99,7 @@ async def sla_by_channel(request: Request, days: int = 30, user=Depends(require_
         {
             "channel": c["channel"],
             "total": c["total"],
-            "avg_first_response": c["fr_sum"] / c["total"] if c["total"] else None,
+            "avg_first_response": c["fr_sum"] / c["total_responded"] if c["total_responded"] else None,
             "avg_resolution": c["res_sum"] / c["total"] if c["total"] else None,
             "resolution_breach_rate": c["breach_sum"] / c["total"] if c["total"] else None,
         }
@@ -94,15 +113,17 @@ async def sla_by_subject(request: Request, days: int = 30, user=Depends(require_
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT COALESCE(cs.subject, 'Não categorizado') AS subject,
-                count(*) AS total,
-                avg(v.first_response_minutes) AS avg_first_response,
-                avg(v.resolution_minutes) AS avg_resolution,
-                sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
+                count(*) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}) AS total,
+                avg(v.first_response_minutes) FILTER (WHERE v.first_response_at >= now() - {WINDOW_SQL}) AS avg_first_response,
+                avg(v.resolution_minutes) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}) AS avg_resolution,
+                sum((v.resolution_minutes > v.target_resolution_minutes)::int) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL})::float
+                    / NULLIF(count(*) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = v.conversation_id
-            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1)
+            WHERE v.account_id = $2
+                AND (v.first_response_at >= now() - {WINDOW_SQL} OR v.last_resolved_at >= now() - {WINDOW_SQL})
             GROUP BY subject
             ORDER BY total DESC
             """,
@@ -118,14 +139,16 @@ async def sla_by_team(request: Request, days: int = 30, user=Depends(require_adm
     async with pool.acquire() as conn:
         team_names = await get_team_names(conn, account_id)
         rows = await conn.fetch(
-            """
+            f"""
             SELECT v.team_id,
-                count(*) AS total,
-                avg(v.first_response_minutes) AS avg_first_response,
-                avg(v.resolution_minutes) AS avg_resolution,
-                sum((v.resolution_minutes > v.target_resolution_minutes)::int)::float / NULLIF(count(*), 0) AS resolution_breach_rate
+                count(*) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}) AS total,
+                avg(v.first_response_minutes) FILTER (WHERE v.first_response_at >= now() - {WINDOW_SQL}) AS avg_first_response,
+                avg(v.resolution_minutes) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}) AS avg_resolution,
+                sum((v.resolution_minutes > v.target_resolution_minutes)::int) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL})::float
+                    / NULLIF(count(*) FILTER (WHERE v.last_resolved_at >= now() - {WINDOW_SQL}), 0) AS resolution_breach_rate
             FROM monitor.v_sla v
-            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1)
+            WHERE v.account_id = $2
+                AND (v.first_response_at >= now() - {WINDOW_SQL} OR v.last_resolved_at >= now() - {WINDOW_SQL})
             GROUP BY v.team_id
             """,
             days, account_id,
@@ -145,6 +168,8 @@ async def sla_by_team(request: Request, days: int = 30, user=Depends(require_adm
 
 @router.get("/monitor/api/sla/by-client")
 async def sla_by_client(request: Request, days: int = 30, user=Depends(require_admin), account_id: int = Depends(get_account_id)):
+    # Ranking de clientes é baseado exclusivamente em resolução (não expõe
+    # 1ª resposta), então a janela única em last_resolved_at continua correta aqui.
     days = _validate_days_extended(days)
     pool = request.app.state.monitor_pool
     async with pool.acquire() as conn:
@@ -156,7 +181,7 @@ async def sla_by_client(request: Request, days: int = 30, user=Depends(require_a
                 v.resolution_minutes, v.target_resolution_minutes
             FROM monitor.v_sla v
             JOIN monitor.conversation_snapshot cs ON cs.conversation_id = v.conversation_id
-            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - make_interval(days => $1) AND cs.contact_id IS NOT NULL
+            WHERE v.account_id = $2 AND v.last_resolved_at >= now() - {WINDOW_SQL} AND cs.contact_id IS NOT NULL
             """,
             days, account_id,
         )
