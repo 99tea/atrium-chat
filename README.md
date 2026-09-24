@@ -12,19 +12,6 @@ Plataforma de atendimento ao cliente construída sobre o **Chatwoot** (whitelabe
 - **Nginx + Certbot** — reverse proxy e SSL
 - **Docker Compose** — todos os serviços containerizados
 
-## Estrutura
-├── evolution/webhook/ # Bridge WhatsApp (Evolution API) ↔ Chatwoot
-│ ├── main.py # Webhooks: whatsapp, chatwoot, chatwoot-resolved, chatwoot-email
-│ └── config/tenants/ # Config YAML por tenant (multi-cliente)
-├── monitor/ # Dashboard de monitoramento
-│ ├── main.py # App FastAPI (routers)
-│ ├── monitor_*.py # Rotas por domínio (agents, sla, conversations, clients, csat...)
-│ ├── auth.py # Sessão via cookie assinado (itsdangerous)
-│ └── static/ # SPA (JS puro, sem build framework), Tailwind
-├── nginx/conf.d/ # Configs de proxy por subdomínio
-└── backup/scripts/ # Backup automatizado (Postgres + volumes) para Drive/Dropbox
-
-
 ## Funcionalidades do Monitor
 
 - **Visão Hoje / Volume / SLA** — métricas em tempo real por canal, prioridade, time e cliente
