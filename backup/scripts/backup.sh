@@ -2,7 +2,7 @@
 set -uo pipefail
 
 # ── Config ────────────────────────────────────────────────
-BASE_DIR="/opt/djcontabilidade/backup"
+BASE_DIR="/opt/atrium-chat/backup"
 ENV_FILE="$BASE_DIR/.env"
 DATE=$(date +%F)
 DAY_DIR="$BASE_DIR/local/$DATE"
@@ -18,11 +18,11 @@ EVOLUTION_INSTANCES_VOL="evolution_evolution-instances"
 EVOLUTION_STORE_VOL="evolution_evolution-store"
 
 CONFIG_PATHS=(
-  "/opt/djcontabilidade/chatwoot/.env"
-  "/opt/djcontabilidade/chatwoot/docker-compose.yml"
-  "/opt/djcontabilidade/evolution"
-  "/opt/djcontabilidade/monitor/.env"
-  "/opt/djcontabilidade/branding"
+  "/opt/atrium-chat/chatwoot/.env"
+  "/opt/atrium-chat/chatwoot/docker-compose.yml"
+  "/opt/atrium-chat/evolution"
+  "/opt/atrium-chat/monitor/.env"
+  "/opt/atrium-chat/branding"
   "/etc/nginx/sites-available"
 )
 

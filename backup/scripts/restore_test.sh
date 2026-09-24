@@ -2,7 +2,7 @@
 set -uo pipefail
 
 # ── Config ────────────────────────────────────────────────
-BASE_DIR="/opt/djcontabilidade/backup"
+BASE_DIR="/opt/atrium-chat/backup"
 TEST_DIR="$BASE_DIR/restore_test"
 DATE=$(date +%F)
 SOURCE_DIR="$BASE_DIR/local/$DATE"   # usa o backup local mais recente
