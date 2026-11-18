@@ -97,9 +97,9 @@ async function exportToPDF() {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
   doc.setTextColor(...brandColor);
-  doc.text('Australis', titleStartX, currentY + 10);
+  doc.text('Atrium', titleStartX, currentY + 10);
   
-  const monitorX = titleStartX + (doc.getTextWidth('Australis') + 1.5);
+  const monitorX = titleStartX + (doc.getTextWidth('Atrium') + 1.5);
   doc.setTextColor(...textColor);
   doc.text('Monitor', monitorX, currentY + 10);
 
@@ -274,11 +274,11 @@ async function exportToPDF() {
     doc.setTextColor(150, 150, 150);
     doc.setDrawColor(240, 240, 240);
     doc.line(14, 200, 283, 200);
-    doc.text('Australis Monitor - Uso Interno', 14, 205);
+    doc.text('Atrium Monitor - Uso Interno', 14, 205);
     doc.text(`Página ${i} de ${pageCount}`, 283, 205, { align: 'right' });
   }
 
-  const filename = `Australis_Relatorio_${route}_${new Date().toISOString().split('T')[0]}.pdf`;
+  const filename = `Atrium_Relatorio_${route}_${new Date().toISOString().split('T')[0]}.pdf`;
   doc.save(filename);
   showToast('PDF gerado com sucesso!', 'success');
 }
@@ -321,7 +321,7 @@ function exportToCSV() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.setAttribute("href", url);
-  link.setAttribute("download", `Australis_Dados_${route}_${dateStr}.csv`);
+  link.setAttribute("download", `Atrium_Dados_${route}_${dateStr}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
